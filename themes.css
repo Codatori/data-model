@@ -1,0 +1,127 @@
+:root {
+  --midnight: #101820;
+  --slate: #243746;
+  --amber: #E6AD63;
+  --ivory: #F2F0E9;
+  --mist: #8399A5;
+  --rice: #F3F0E8;
+  --pine: #253B35;
+  --vermilion: #B75B4B;
+  --sage: #B8C5B3;
+  --stone: #D8D2C5;
+}
+
+:root, :root[data-theme="zen-graph"] {
+  color-scheme: light;
+  --bg: var(--rice);
+  --paper: var(--rice);
+  --ink: var(--pine);
+  --muted: color-mix(in srgb, var(--pine) 78%, var(--rice));
+  --line: var(--stone);
+  --brand-accent: var(--vermilion);
+  --green: color-mix(in srgb, var(--vermilion) 75%, var(--pine));
+  --accent: color-mix(in srgb, var(--sage) 28%, var(--rice));
+  --surface-muted: color-mix(in srgb, var(--sage) 12%, var(--rice));
+  --surface-hover: color-mix(in srgb, var(--sage) 22%, var(--rice));
+  --surface-selected: var(--accent);
+  --canvas: color-mix(in srgb, var(--sage) 8%, var(--rice));
+  --dot: color-mix(in srgb, var(--stone) 75%, var(--rice));
+  --control-border: color-mix(in srgb, var(--pine) 35%, var(--stone));
+  --code-bg: var(--pine);
+  --code-ink: var(--rice);
+  --code-muted: var(--sage);
+  --inline-code-bg: color-mix(in srgb, var(--stone) 35%, var(--rice));
+  --inline-code-ink: var(--pine);
+  --action-bg: var(--pine);
+  --action-ink: var(--rice);
+  --edge: color-mix(in srgb, var(--pine) 72%, var(--stone));
+  --edge-extension: var(--vermilion);
+  --layer-foundation: var(--pine);
+  --layer-identity: var(--vermilion);
+  --layer-types: var(--sage);
+  --layer-syntax: var(--vermilion);
+  --layer-resolution: var(--pine);
+  --layer-relations: var(--sage);
+  --layer-quality: var(--stone);
+}
+
+:root[data-theme="midnight-satori"] {
+  color-scheme: dark;
+  --bg: var(--midnight);
+  --paper: var(--slate);
+  --ink: var(--ivory);
+  --muted: color-mix(in srgb, var(--mist) 70%, var(--ivory));
+  --line: color-mix(in srgb, var(--mist) 28%, var(--slate));
+  --brand-accent: var(--amber);
+  --green: var(--amber);
+  --accent: color-mix(in srgb, var(--amber) 12%, var(--slate));
+  --surface-muted: color-mix(in srgb, var(--slate) 65%, var(--midnight));
+  --surface-hover: color-mix(in srgb, var(--mist) 12%, var(--slate));
+  --surface-selected: var(--accent);
+  --canvas: color-mix(in srgb, var(--slate) 28%, var(--midnight));
+  --dot: color-mix(in srgb, var(--mist) 28%, var(--midnight));
+  --control-border: color-mix(in srgb, var(--mist) 65%, var(--slate));
+  --code-bg: var(--midnight);
+  --code-ink: var(--ivory);
+  --code-muted: var(--mist);
+  --inline-code-bg: color-mix(in srgb, var(--midnight) 40%, var(--slate));
+  --inline-code-ink: var(--amber);
+  --action-bg: var(--amber);
+  --action-ink: var(--midnight);
+  --edge: var(--mist);
+  --edge-extension: var(--amber);
+  --layer-foundation: var(--mist);
+  --layer-identity: var(--amber);
+  --layer-types: var(--ivory);
+  --layer-syntax: var(--amber);
+  --layer-resolution: var(--mist);
+  --layer-relations: var(--ivory);
+  --layer-quality: var(--mist);
+}
+
+:root {
+  --shadow-color: color-mix(in srgb, var(--ink) 9%, transparent);
+  --ring-color: color-mix(in srgb, var(--brand-accent) 25%, transparent);
+  --shadow: 0 3px 12px var(--shadow-color);
+}
+
+body { background: var(--bg); }
+::selection { background: var(--action-bg); color: var(--action-ink); }
+.brand-wordmark { color: var(--ink); font-size: 23px; letter-spacing: -.9px; font-weight: 650; }
+.brand-period { color: var(--brand-accent); }
+.theme-picker { position: relative; display: flex; align-items: center; gap: 8px; flex-shrink: 0; color: var(--muted); font-size: 10px; }
+.theme-picker::after { content: ""; position: absolute; right: 12px; top: 50%; width: 5px; height: 5px; border-right: 1.5px solid var(--muted); border-bottom: 1.5px solid var(--muted); transform: translateY(-65%) rotate(45deg); pointer-events: none; }
+.theme-picker select {
+  appearance: none;
+  border: 1px solid var(--control-border);
+  border-radius: 6px;
+  padding: 9px 28px 9px 10px;
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+}
+.theme-status { margin: 0; padding: 12px 36px; border-bottom: 1px solid var(--line); background: var(--surface-selected); color: var(--ink); font-size: 12px; line-height: 1.8; }
+.header { height: auto; min-height: 78px; flex-wrap: wrap; }
+input::placeholder { color: var(--muted); opacity: 1; }
+:where(select, [tabindex]):focus-visible { outline: 3px solid var(--brand-accent); outline-offset: 3px; }
+.graph-scroll:focus-visible { outline-offset: -3px; }
+.graph path[data-edge] { opacity: 1; }
+.detail-tab.active::after { background: var(--brand-accent); }
+.relation-badge small { opacity: 1; }
+.edge-label rect { fill: var(--paper); stroke: var(--control-border); }
+.edge-label text { fill: var(--ink); }
+.edge-label:hover rect, .edge-label:focus rect { fill: var(--surface-selected); stroke: var(--brand-accent); }
+
+@media (max-width: 1100px) {
+  .header { padding-top: 15px; padding-bottom: 15px; gap: 12px; }
+  .header nav { order: 3; width: 100%; justify-content: center; }
+  .theme-picker { margin-left: auto; }
+}
+@media (max-width: 620px) {
+  .header .brand-divider, .header .brand-subtitle, .theme-picker > span { display: none; }
+  .brand { gap: 7px; }
+  .brand-wordmark { font-size: 21px; }
+  .theme-picker select { font-size: 10px; padding: 8px 28px 8px 8px; }
+  .header nav { justify-content: space-between; }
+  .theme-status { padding: 12px 16px; }
+}

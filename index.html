@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en" data-theme="zen-graph">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#F3F0E8">
+  <title>codatori. / Code Graph model explorer v2</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="themes.css">
+  <script src="theme.js"></script>
+  <script src="model-data.js" defer></script>
+  <script src="example-model.js" defer></script>
+  <script src="structural-dependencies.js" defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <header class="header">
+    <a class="brand" href="#explorer" aria-label="codatori. model explorer home"><span class="brand-icon" aria-hidden="true">▦</span><span class="brand-wordmark">codatori<span class="brand-period">.</span></span><span class="brand-divider">/</span><span class="brand-subtitle">Model explorer</span></a>
+    <nav aria-label="Presentation views">
+      <button class="nav-button active" data-view="explorer" aria-pressed="true">Explore the model</button>
+      <button class="nav-button" data-view="walkthrough" aria-pressed="false">Guided walkthrough</button>
+      <button class="nav-button" data-view="semantics" aria-pressed="false">Semantic relations</button>
+      <button class="nav-button" data-view="specification" aria-pressed="false">Full specification</button>
+    </nav>
+    <label class="theme-picker" for="theme-picker"><span>Theme</span><select id="theme-picker" aria-label="Color theme"><option value="zen-graph">Zen Graph · light</option><option value="midnight-satori">Midnight Satori · dark</option></select></label>
+  </header>
+  <p id="theme-status" class="theme-status" role="status" hidden></p>
+  <main>
+    <section class="intro">
+      <div><div class="eyebrow"><span class="status-dot"></span><span id="brand-tagline">CLARITY FROM COMPLEXITY</span></div><h1>Understand the code.<br><span>Connect the model.</span></h1><p>Model v2 · preserved source, symbols, and structural dependencies.<br>Keep established and possible relationships distinct — without predicting execution.</p></div>
+      <div class="intro-facts"><div><strong id="entity-count">—</strong><span>model structures</span></div><div><strong>2</strong><span>conformance levels</span></div><div><strong>16</strong><span>integrity invariants</span></div></div>
+    </section>
+    <section id="explorer-view" class="view">
+      <div class="workspace">
+        <aside class="sidebar" aria-label="Filter model structures">
+          <div class="eyebrow">MODEL LAYERS</div>
+          <button class="layer-button active" data-layer="all"><span>All structures</span><span id="all-count" class="count"></span></button>
+          <div id="layer-list"></div>
+          <div class="sidebar-note"><span class="note-icon">↗</span><strong>Syntax ≠ semantics</strong><p>A preserved call does not guarantee a selected target. Supported possible candidates remain dependencies; a known definition does not predict execution.</p><button id="start-tour" class="text-button">See how it fits together →</button></div>
+          <div class="legend"><div class="eyebrow">READING THE MAP</div><p><span class="legend-solid"></span> Reference / embedded value</p><p><span class="legend-dashed"></span> Shared-identity extension</p><p><span class="legend-dot"></span> Selected structure</p><small>Arrows point from the record to the structure it references. Select a card to reveal its connections.</small></div>
+        </aside>
+        <div class="map-area">
+          <div class="map-toolbar"><div><h2>Structure map</h2><span id="map-summary">Every layer, one connected model</span></div><label class="search"><span aria-hidden="true">⌕</span><input id="search" type="search" placeholder="Find a structure or attribute…" aria-label="Search structures, attributes, and explanations"><kbd>/</kbd></label></div>
+          <div class="map-options">
+            <label><input id="neighbors-only" type="checkbox"> Focus on connections</label>
+            <button id="reset-map" class="text-button">Reset view ↺</button>
+            <div class="map-controls" aria-label="Map viewport controls">
+              <button id="zoom-out" class="map-control" aria-label="Zoom out">−</button>
+              <output id="zoom-level" aria-live="polite">100%</output>
+              <button id="zoom-in" class="map-control" aria-label="Zoom in">+</button>
+              <button id="fit-map" class="map-control">Fit all</button>
+              <button id="expand-map" class="map-control" aria-pressed="false">Expand map ↗</button>
+            </div>
+            <span id="visible-count"></span>
+          </div>
+          <div id="relation-info" class="relation-info" aria-live="polite"></div>
+          <div class="graph-scroll" tabindex="0" aria-label="Scrollable structure map">
+            <div id="graph-stage" class="graph-stage"><div id="graph" class="graph"><svg id="connections" role="group" aria-label="Labeled references for the selected structure"></svg><div id="graph-groups"></div></div></div>
+            <div id="empty-state" hidden>No matching structures. Try a name such as “Symbol” or an attribute such as “context_id”.</div>
+          </div>
+          <div class="map-footer"><span><span class="status-dot"></span> Source-backed documentation</span><span>Click a structure · follow a reference · explore a layer</span></div>
+        </div>
+        <aside id="details" class="details" aria-label="Selected structure details" tabindex="-1"></aside>
+      </div>
+      <div class="dependency-overview"><div class="eyebrow">V2 · DERIVED VIEW, NOT AN ENTITY</div><h2>Structural dependency graph</h2><p>Derive component relationships from references, resolutions, imports, type bindings, and semantic relations. Keep selected targets and supported possible candidates; exclude inapplicable candidates. Optional ImplementationSet records identify source definitions, not runtime behavior.</p><p>Conditional source relationships remain visible without proving execution. Aggregated occurrences keep their contexts and uncertainty; they need not apply simultaneously. Source transformation, execution tracing, and branch-sensitive value tracking are outside v2.</p><button class="text-button" data-section="10">Read structural dependency rules →</button><button class="text-button" id="show-dependencies">See the C++ dependency example →</button></div>
+      <div class="principle-strip"><span class="eyebrow">THE CENTRAL IDEA</span><p><strong>Preserve what was written.</strong> Record what was concluded. Make uncertainty explicit.</p><button class="text-button" id="read-principles">Read the principles →</button></div>
+    </section>
+    <section id="walkthrough-view" class="view" hidden>
+      <div class="tour-layout"><aside><div class="eyebrow">FOLLOW THE C++ DEPENDENCIES</div><h2>From spelling<br>to structure.</h2><p>Engine’s SceneManager and RenderContext, an illustrative v2 model result, and six steps connecting the two. Inspect focused source excerpts, record cards, JSON, and derived component relationships. Execution is not assessed.</p><ol id="tour-steps"></ol></aside><div id="tour-content" class="tour-content"></div></div>
+    </section>
+    <section id="specification-view" class="view" hidden>
+      <div class="spec-layout"><aside><div class="eyebrow">THE SOURCE OF TRUTH · V2</div><h2>Full specification</h2><p>All descriptions, attributes, rules, and conformance requirements from Code Graph Data Model v2.md.</p><nav id="spec-toc" aria-label="Specification sections"></nav></aside><article id="spec-content" class="prose"></article></div>
+    </section>
+    <section id="semantics-view" class="view" hidden aria-labelledby="semantics-heading">
+      <div class="spec-layout semantic-layout">
+        <aside><div class="eyebrow">RELATIONSHIP REFERENCE · V2</div><h2 id="semantics-heading">Semantic relations</h2><p>What each relation means, which records it connects, and when it belongs in the model. Select a kind to open its explanation and example.</p><nav id="semantic-toc" aria-label="Semantic relation kinds"></nav></aside>
+        <article id="semantic-content" class="prose"></article>
+      </div>
+    </section>
+    <noscript>This interactive presentation requires JavaScript. Read <a href="Code%20Graph%20Data%20Model%20v2.md">Code Graph Data Model v2.md</a> for the complete specification.</noscript>
+  </main>
+  <footer class="footer"><span>codatori<span class="brand-period">.</span><span class="brand-divider">/</span>A structural model of source code</span><span><a href="color-design.md">Color design</a> · Based on <a href="Code%20Graph%20Data%20Model%20v2.md">Code Graph Data Model v2.md</a> · No external dependencies</span></footer>
+</body>
+</html>

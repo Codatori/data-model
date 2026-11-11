@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="840" viewBox="0 0 1200 840" role="img" aria-labelledby="title description">
+  <title id="title">codatori. color design: Midnight Satori and Zen Graph</title>
+  <desc id="description">Dark theme: Midnight #101820, Slate #243746, Amber #E6AD63, Ivory #F2F0E9, Mist #8399A5. Light theme: Rice #F3F0E8, Pine #253B35, Vermilion #B75B4B, Sage #B8C5B3, Stone #D8D2C5.</desc>
+  <g font-family="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif">
+    <rect width="1200" height="420" rx="18" fill="#101820"/>
+    <text x="44" y="78" font-size="43" font-weight="650" letter-spacing="-1" fill="#F2F0E9">codatori<tspan fill="#E6AD63">.</tspan></text>
+    <text x="44" y="112" font-size="12" letter-spacing="2" fill="#8399A5">UNDERSTANDING BEYOND SYNTAX</text>
+    <text x="1156" y="65" font-size="13" letter-spacing="2" text-anchor="end" fill="#F2F0E9">01 / MIDNIGHT SATORI</text>
+    <text x="1156" y="92" font-size="12" text-anchor="end" fill="#8399A5">DARK THEME</text>
+    <g stroke="#243746" stroke-width="2">
+      <rect x="44" y="166" width="192" height="124" rx="9" fill="#101820"/>
+      <rect x="266" y="166" width="192" height="124" rx="9" fill="#243746"/>
+      <rect x="488" y="166" width="192" height="124" rx="9" fill="#E6AD63"/>
+      <rect x="710" y="166" width="192" height="124" rx="9" fill="#F2F0E9"/>
+      <rect x="932" y="166" width="192" height="124" rx="9" fill="#8399A5"/>
+    </g>
+    <g fill="#F2F0E9" font-size="18">
+      <text x="44" y="324">Midnight</text><text x="266" y="324">Slate</text><text x="488" y="324">Amber</text><text x="710" y="324">Ivory</text><text x="932" y="324">Mist</text>
+    </g>
+    <g fill="#8399A5" font-family="ui-monospace, monospace" font-size="14">
+      <text x="44" y="353">#101820</text><text x="266" y="353">#243746</text><text x="488" y="353">#E6AD63</text><text x="710" y="353">#F2F0E9</text><text x="932" y="353">#8399A5</text>
+    </g>
+    <text x="44" y="391" font-size="12" fill="#8399A5">Midnight canvas / Slate surfaces / Amber accents / Ivory text / Mist metadata</text>
+
+    <rect y="440" width="1200" height="400" rx="18" fill="#F3F0E8"/>
+    <text x="44" y="512" font-size="43" font-weight="650" letter-spacing="-1" fill="#253B35">codatori<tspan fill="#B75B4B">.</tspan></text>
+    <text x="44" y="546" font-size="12" letter-spacing="2" fill="#253B35">CLARITY FROM COMPLEXITY</text>
+    <text x="1156" y="499" font-size="13" letter-spacing="2" text-anchor="end" fill="#253B35">02 / ZEN GRAPH</text>
+    <text x="1156" y="526" font-size="12" text-anchor="end" fill="#253B35">LIGHT THEME</text>
+    <g stroke="#D8D2C5" stroke-width="2">
+      <rect x="44" y="594" width="192" height="124" rx="9" fill="#F3F0E8"/>
+      <rect x="266" y="594" width="192" height="124" rx="9" fill="#253B35"/>
+      <rect x="488" y="594" width="192" height="124" rx="9" fill="#B75B4B"/>
+      <rect x="710" y="594" width="192" height="124" rx="9" fill="#B8C5B3"/>
+      <rect x="932" y="594" width="192" height="124" rx="9" fill="#D8D2C5"/>
+    </g>
+    <g fill="#253B35" font-size="18">
+      <text x="44" y="752">Rice</text><text x="266" y="752">Pine</text><text x="488" y="752">Vermilion</text><text x="710" y="752">Sage</text><text x="932" y="752">Stone</text>
+    </g>
+    <g fill="#253B35" font-family="ui-monospace, monospace" font-size="14">
+      <text x="44" y="780">#F3F0E8</text><text x="266" y="780">#253B35</text><text x="488" y="780">#B75B4B</text><text x="710" y="780">#B8C5B3</text><text x="932" y="780">#D8D2C5</text>
+    </g>
+    <text x="44" y="818" font-size="12" fill="#253B35">Rice canvas / Pine text / Vermilion accents / Sage states / Stone borders</text>
+  </g>
+</svg>
