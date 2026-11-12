@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<svg width="90" height="90" xmlns="http://www.w3.org/2000/svg" xmlns:svg="http://www.w3.org/2000/svg">
+ <!-- Created with SVG-edit - https://github.com/SVG-Edit/svgedit-->
+
+ <g class="layer" display="inline">
+  <title>Layer 1</title>
+  <path fill="#374b5b" d="m21.79,64.03l14.95,-18.48l11.14,10.91l9.09,-8.86l21.66,20.29q-26.14,28.18 -56.83,-3.85z" id="svg_52"/>
+  <path fill="none" stroke="#f2f0e9" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" d="m74.72,19.15c-14.2,-14.2 -37.23,-14.2 -51.43,0c-14.2,14.2 -14.2,37.23 0,51.43c14.2,14.2 37.23,14.2 51.43,0" id="svg_47"/>
+  <desc id="svg_54">A bold letter C enclosing a torii gate between two amber graph chevrons, each with three nodes. Pale mountains rise behind the gate from the inner base of the C. Light theme.</desc>
+  <path fill="none" stroke="#f2f0e9" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" d="m37.77,36.44l-9.07,8.12l9.07,8.12" id="svg_46"/>
+  <path fill="none" stroke="#e6ad63" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" d="m68.5,37.25l9.58,7.27l-9.58,7.27" id="svg_42"/>
+  <path fill="#e6ad63" d="m69.82,36.54c0,1 -0.81,1.82 -1.82,1.82c-1,0 -1.82,-0.81 -1.82,-1.82c0,-1 0.81,-1.82 1.82,-1.82c1,0 1.82,0.81 1.82,1.82z" id="svg_41" stroke="#e6ad63" stroke-width="3"/>
+  <path fill="#e6ad63" d="m79.5,44.62c0,1 -0.81,1.82 -1.82,1.82c-1,0 -1.82,-0.81 -1.82,-1.82c0,-1 0.81,-1.82 1.82,-1.82c1,0 1.82,0.81 1.82,1.82z" id="svg_40" stroke="#e6ad63" stroke-width="3"/>
+  <path fill="#e6ad63" d="m69.72,52.9c0,1 -0.81,1.82 -1.82,1.82c-1,0 -1.82,-0.81 -1.82,-1.82c0,-1 0.81,-1.82 1.82,-1.82c1,0 1.82,0.81 1.82,1.82z" id="svg_39" stroke-width="3" stroke="#e6ad63"/>
+  <g id="svg_57" transform="matrix(1 0 0 1 -18.5931 -27.0853)">
+   <path fill="#b75b4b" d="m62.81,67.51c4.21,1.32 10.82,1.32 15.03,0l-0.9,1.87q-6.61,1.21 -13.22,0l-0.9,-1.87z" id="svg_51" stroke="#b75b4b"/>
+   <path fill="#b75b4b" d="m65.87,69.37l2.04,0l0,14.61l-2.04,0l0,-14.61z" id="svg_50"/>
+   <path fill="#b75b4b" d="m72.67,69.57l2.04,0l0,14.41l-2.04,0l0,-14.41z" id="svg_49"/>
+   <path fill="#b75b4b" d="m63.41,72.32l13.86,0l0,1.95l-13.86,0l0,-1.95z" id="svg_48"/>
+  </g>
+ </g>
+</svg>

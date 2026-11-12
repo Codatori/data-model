@@ -147,7 +147,7 @@ test('resolved project targets and unsupported SDK decisions remain distinct', (
   }
 });
 
-test('v2 preserves conditional source dependencies without execution records', () => {
+test('the model preserves conditional source dependencies without execution records', () => {
   const path = ['update-dispatch', 'dispatch-execute', 'execute-finalize', 'finalize-update'];
   const targets = path.map(key => entities.get(`resolution:call:${key}`).selected_target_id);
   assert.equal(targets.join(' -> '), 'symbol:dispatch -> symbol:execute -> symbol:finalize -> symbol:update');
@@ -157,6 +157,10 @@ test('v2 preserves conditional source dependencies without execution records', (
     assert.equal(call.scope_id, scope.id);
     assert(call.span.start_offset >= scope.span.start_offset && call.span.end_offset <= scope.span.end_offset);
     assert(!('presence_condition' in call), 'A source if is not a PresenceCondition');
+    const condition = model.CallProfile.find(record => record.id === call.id).condition;
+    assert.equal(condition.predicate.expression_id, conditional.condition_expression_id);
+    assert.equal(condition.completeness, 'complete');
+    assert(model.Coverage.some(record => record.subject_id === call.id && record.dimension === 'condition' && record.state === 'complete'));
     assert(model.Evidence.some(record => record.subject_id === call.id && record.method === 'syntax' && record.authority === 'observed'));
   }
   assert.equal(entities.get('coverage:references').state, 'partial');
@@ -166,12 +170,12 @@ test('v2 preserves conditional source dependencies without execution records', (
   assert(!model.Coverage.some(record => ['control_flow', 'data_flow'].includes(record.dimension)));
 });
 
-test('the offline specification and teaching schema are v2', () => {
+test('the offline specification and teaching schema match the sole specification', () => {
   const specification = readFileSync(new URL('Code Graph Data Model v2.md', import.meta.url), 'utf8');
   assert.equal(context.window.CODE_GRAPH_SOURCE, specification);
   const names = [...specification.matchAll(/^### (\w+)$/gm)].map(match => match[1]);
-  assert.equal(names.length, 28);
-  for (const category of Object.keys(model)) assert(names.includes(category), `Non-v2 category: ${category}`);
+  assert.equal(names.length, 29);
+  for (const category of Object.keys(model)) assert(names.includes(category), `Unknown category: ${category}`);
   assert.equal(model.CodeDataset[0].schema_version, 'v2');
   const conformance = specification.slice(specification.indexOf('## 14.'));
   assert.equal((conformance.match(/\*\*(?:Syntactic|Semantic) dataset\*\*/g) || []).length, 2);
@@ -192,6 +196,11 @@ test('component aggregation retains provenance, source types, and optional imple
   const edge = view.edges.find(edge => edge.kind === 'call' && edge.supporting_ids.includes('call:dispatch-execute'));
   assert.equal(edge.from, 'symbol:dispatch', 'A source block does not replace its nearest callable owner');
   assert.equal(edge.to, 'symbol:execute');
+  assert.equal(edge.call_condition.predicate.expression_id, 'condition:dispatch');
+  assert.equal(edge.call_condition.completeness, 'complete');
+  assert.equal(edge.target_condition, undefined, 'Absent target conditions remain unknown');
+  assert(edge.supporting_ids.includes('evidence:conditional-dispatch'));
+  assert(edge.supporting_ids.includes('coverage:conditional-dispatch'));
   assert(!view.edges.some(edge => ['call:make-context', 'call:manager-get'].some(id => edge.kind === 'call' && edge.supporting_ids.includes(id))));
 });
 
@@ -209,8 +218,10 @@ test('supported possible candidates survive without selection; inapplicable targ
     coverage.state = 'partial';
   }
   resolution.candidates = [
-    { target_symbol_id: 'symbol:execute', applicability: 'applicable', conversions: [], reason_codes: [] },
-    { target_symbol_id: 'symbol:finalize', applicability: 'unknown', conversions: [], reason_codes: ['synthetic_partial_candidate'] },
+    { target_symbol_id: 'symbol:execute', applicability: 'applicable', conversions: [], reason_codes: [],
+      condition: { predicate: { kind: 'expression', expression_id: 'condition:dispatch' }, completeness: 'partial' } },
+    { target_symbol_id: 'symbol:finalize', applicability: 'unknown', conversions: [], reason_codes: ['synthetic_partial_candidate'],
+      condition: { predicate: { kind: 'not', predicate: { kind: 'expression', expression_id: 'condition:dispatch' } }, completeness: 'partial' } },
     { target_symbol_id: 'symbol:update', applicability: 'inapplicable', conversions: [], reason_codes: ['synthetic_rejected_candidate'] }
   ];
   copy.Evidence.push({ id: 'evidence:synthetic-candidates', subject_id: resolution.id, method: 'manual',
@@ -220,6 +231,11 @@ test('supported possible candidates survive without selection; inapplicable targ
   assert.equal(edges.length, 2);
   assert(edges.every(edge => edge.certainty === 'possible' && edge.candidate_set_completeness === 'partial'));
   assert.equal(edges.map(edge => edge.to).sort().join(','), 'symbol:execute,symbol:finalize');
+  for (const edge of edges) {
+    assert.equal(edge.call_condition.predicate.expression_id, 'condition:dispatch');
+    const candidate = resolution.candidates.find(record => record.target_symbol_id === edge.to);
+    assert.equal(JSON.stringify(edge.target_condition), JSON.stringify(candidate.condition));
+  }
   copy.Evidence.find(record => record.id === 'evidence:synthetic-candidates').supporting_ids = ['symbol:execute'];
   assert.throws(() => context.window.CODE_GRAPH_DEPENDENCIES(copy), /needs evidence/, 'Unrelated evidence must not establish an unknown candidate');
   copy.Evidence = copy.Evidence.filter(record => record.subject_id !== resolution.id);
@@ -237,6 +253,35 @@ test('aggregated contexts and presence conditions are retained rather than flatt
   const occurrences = group.occurrences.filter(edge => edge.kind === 'reference');
   assert.equal(occurrences.length, 2);
   assert(occurrences.every(edge => edge.presence_conditions.length === 1));
+});
+
+test('selected target conditions stay attached to their occurrence and analysis context', () => {
+  const copy = JSON.parse(JSON.stringify(model));
+  const original = copy.Resolution.find(record => record.id === 'resolution:call:dispatch-execute');
+  original.candidates[0].condition = {
+    predicate: { kind: 'expression', expression_id: 'condition:dispatch' }, completeness: 'complete'
+  };
+  const alternate = JSON.parse(JSON.stringify(original));
+  alternate.id = 'resolution:conditional-alternate';
+  alternate.context_id = 'context:conditional-alternate';
+  alternate.candidates[0].condition = {
+    predicate: { kind: 'unknown', reason: 'synthetic_configuration_boundary' }, completeness: 'unknown'
+  };
+  copy.AnalysisContext.push({ ...copy.AnalysisContext[0], id: alternate.context_id });
+  copy.Resolution.push(alternate);
+  const before = JSON.stringify(copy);
+  const view = context.window.CODE_GRAPH_DEPENDENCIES(copy);
+  assert.equal(JSON.stringify(copy), before, 'Condition propagation must not mutate canonical records');
+  const group = view.components.find(record => record.from === 'symbol:SceneManager' && record.to === 'symbol:RenderContext');
+  for (const resolution of [original, alternate]) {
+    const edge = group.occurrences.find(record => record.kind === 'call' && record.supporting_ids.includes(resolution.id));
+    assert.equal(edge.certainty, 'selected');
+    assert.equal(edge.context_id, resolution.context_id);
+    assert.equal(edge.call_condition.predicate.expression_id, 'condition:dispatch');
+    assert.equal(JSON.stringify(edge.target_condition), JSON.stringify(resolution.candidates[0].condition));
+  }
+  const unassessed = view.edges.find(edge => edge.kind === 'call' && edge.supporting_ids.includes('call:update-dispatch'));
+  assert.equal(unassessed.call_condition, undefined, 'Missing branch analysis is not an unconditional predicate');
 });
 
 test('candidate dependent types preserve their explicit symbolic dependencies', () => {

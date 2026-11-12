@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#F3F0E8">
-  <title>codatori. / Code Graph model explorer v2</title>
+  <title>codatori. / Code Graph model explorer</title>
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="themes.css">
   <script src="theme.js"></script>
@@ -15,7 +15,7 @@
 </head>
 <body>
   <header class="header">
-    <a class="brand" href="#explorer" aria-label="codatori. model explorer home"><span class="brand-icon" aria-hidden="true">▦</span><span class="brand-wordmark">codatori<span class="brand-period">.</span></span><span class="brand-divider">/</span><span class="brand-subtitle">Model explorer</span></a>
+    <a class="brand" href="#explorer" aria-label="codatori. model explorer home"><span class="brand-lockup"><img class="brand-icon" src="codatori-logo-light.svg" width="40" height="40" alt=""><span class="brand-wordmark">codatori<span class="brand-period">.</span></span></span><span class="brand-divider">/</span><span class="brand-subtitle">Model explorer</span></a>
     <nav aria-label="Presentation views">
       <button class="nav-button active" data-view="explorer" aria-pressed="true">Explore the model</button>
       <button class="nav-button" data-view="walkthrough" aria-pressed="false">Guided walkthrough</button>
@@ -27,7 +27,7 @@
   <p id="theme-status" class="theme-status" role="status" hidden></p>
   <main>
     <section class="intro">
-      <div><div class="eyebrow"><span class="status-dot"></span><span id="brand-tagline">CLARITY FROM COMPLEXITY</span></div><h1>Understand the code.<br><span>Connect the model.</span></h1><p>Model v2 · preserved source, symbols, and structural dependencies.<br>Keep established and possible relationships distinct — without predicting execution.</p></div>
+      <div><div class="eyebrow"><span class="status-dot"></span><span id="brand-tagline">CLARITY FROM COMPLEXITY</span></div><h1>Understand the code.<br><span>Connect the model.</span></h1><p>Preserved source, symbols, and structural dependencies.<br>Keep established and possible relationships distinct — without predicting execution.</p></div>
       <div class="intro-facts"><div><strong id="entity-count">—</strong><span>model structures</span></div><div><strong>2</strong><span>conformance levels</span></div><div><strong>16</strong><span>integrity invariants</span></div></div>
     </section>
     <section id="explorer-view" class="view">
@@ -62,23 +62,23 @@
         </div>
         <aside id="details" class="details" aria-label="Selected structure details" tabindex="-1"></aside>
       </div>
-      <div class="dependency-overview"><div class="eyebrow">V2 · DERIVED VIEW, NOT AN ENTITY</div><h2>Structural dependency graph</h2><p>Derive component relationships from references, resolutions, imports, type bindings, and semantic relations. Keep selected targets and supported possible candidates; exclude inapplicable candidates. Optional ImplementationSet records identify source definitions, not runtime behavior.</p><p>Conditional source relationships remain visible without proving execution. Aggregated occurrences keep their contexts and uncertainty; they need not apply simultaneously. Source transformation, execution tracing, and branch-sensitive value tracking are outside v2.</p><button class="text-button" data-section="10">Read structural dependency rules →</button><button class="text-button" id="show-dependencies">See the C++ dependency example →</button></div>
+      <div class="dependency-overview"><div class="eyebrow">DERIVED VIEW, NOT AN ENTITY</div><h2>Structural dependency graph</h2><p>Derive component relationships from references, resolutions, imports, type bindings, and semantic relations. Keep selected targets and supported possible candidates; exclude inapplicable candidates. Optional ImplementationSet records identify source definitions, not runtime behavior.</p><p>Conditional source relationships remain visible without proving execution. Aggregated occurrences keep their contexts and uncertainty; they need not apply simultaneously. Source transformation, execution tracing, and branch-sensitive value tracking are outside the model.</p><button class="text-button" data-section="10">Read structural dependency rules →</button><button class="text-button" id="show-dependencies">See the C++ dependency example →</button></div>
       <div class="principle-strip"><span class="eyebrow">THE CENTRAL IDEA</span><p><strong>Preserve what was written.</strong> Record what was concluded. Make uncertainty explicit.</p><button class="text-button" id="read-principles">Read the principles →</button></div>
     </section>
     <section id="walkthrough-view" class="view" hidden>
-      <div class="tour-layout"><aside><div class="eyebrow">FOLLOW THE C++ DEPENDENCIES</div><h2>From spelling<br>to structure.</h2><p>Engine’s SceneManager and RenderContext, an illustrative v2 model result, and six steps connecting the two. Inspect focused source excerpts, record cards, JSON, and derived component relationships. Execution is not assessed.</p><ol id="tour-steps"></ol></aside><div id="tour-content" class="tour-content"></div></div>
+      <div class="tour-layout"><aside><div class="eyebrow">FOLLOW THE C++ DEPENDENCIES</div><h2>From spelling<br>to structure.</h2><p>Engine’s SceneManager and RenderContext, an illustrative model result, and six steps connecting the two. Inspect focused source excerpts, record cards, JSON, and derived component relationships. Execution is not assessed.</p><ol id="tour-steps"></ol></aside><div id="tour-content" class="tour-content"></div></div>
     </section>
     <section id="specification-view" class="view" hidden>
-      <div class="spec-layout"><aside><div class="eyebrow">THE SOURCE OF TRUTH · V2</div><h2>Full specification</h2><p>All descriptions, attributes, rules, and conformance requirements from Code Graph Data Model v2.md.</p><nav id="spec-toc" aria-label="Specification sections"></nav></aside><article id="spec-content" class="prose"></article></div>
+      <div class="spec-layout"><aside><div class="eyebrow">THE SOURCE OF TRUTH</div><h2>Full specification</h2><p>All descriptions, attributes, rules, and conformance requirements from the Code Graph Data Model.</p><nav id="spec-toc" aria-label="Specification sections"></nav></aside><article id="spec-content" class="prose"></article></div>
     </section>
     <section id="semantics-view" class="view" hidden aria-labelledby="semantics-heading">
       <div class="spec-layout semantic-layout">
-        <aside><div class="eyebrow">RELATIONSHIP REFERENCE · V2</div><h2 id="semantics-heading">Semantic relations</h2><p>What each relation means, which records it connects, and when it belongs in the model. Select a kind to open its explanation and example.</p><nav id="semantic-toc" aria-label="Semantic relation kinds"></nav></aside>
+        <aside><div class="eyebrow">RELATIONSHIP REFERENCE</div><h2 id="semantics-heading">Semantic relations</h2><p>What each relation means, which records it connects, and when it belongs in the model. Select a kind to open its explanation and example.</p><nav id="semantic-toc" aria-label="Semantic relation kinds"></nav></aside>
         <article id="semantic-content" class="prose"></article>
       </div>
     </section>
-    <noscript>This interactive presentation requires JavaScript. Read <a href="Code%20Graph%20Data%20Model%20v2.md">Code Graph Data Model v2.md</a> for the complete specification.</noscript>
+    <noscript>This interactive presentation requires JavaScript. Read <a href="Code%20Graph%20Data%20Model%20v2.md">Code Graph Data Model</a> for the complete specification.</noscript>
   </main>
-  <footer class="footer"><span>codatori<span class="brand-period">.</span><span class="brand-divider">/</span>A structural model of source code</span><span><a href="color-design.md">Color design</a> · Based on <a href="Code%20Graph%20Data%20Model%20v2.md">Code Graph Data Model v2.md</a> · No external dependencies</span></footer>
+  <footer class="footer"><span>codatori<span class="brand-period">.</span><span class="brand-divider">/</span>A structural model of source code</span><span><a href="color-design.md">Color design</a> · Based on <a href="Code%20Graph%20Data%20Model%20v2.md">Code Graph Data Model</a> · No external dependencies</span></footer>
 </body>
 </html>

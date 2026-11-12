@@ -240,7 +240,7 @@ int main() {
   const settings = { module_id: 'module:example', language_settings: { language: 'cpp', standard: 'c++17' },
     defines: {}, search_paths: [], dependency_context_ids: [] };
   add('CodeDataset', { id: 'dataset:example-v2', schema_version: 'v2', digest_algorithm: 'fnv1a32',
-    producer: 'codatori. / hand-authored C++ v2 teaching projection', root_module_ids: ['module:example'] });
+    producer: 'codatori. / hand-authored C++ teaching projection', root_module_ids: ['module:example'] });
   add('SourceFile', { id: 'file:example', uri: 'memory:///example.cpp', content: code,
     content_digest: fingerprint(code), language: 'cpp', origin: 'source' });
   add('Module', { id: 'module:example', name: 'Engine example', kind: 'executable' });
@@ -469,9 +469,15 @@ int main() {
     for (const expression of model.Expression.filter(record => ['call', 'callee', 'receiver'].some(prefix => record.id === `${prefix}:${key === 'dispatch' ? 'dispatch-execute' : 'finalize-update'}`))) {
       expression.scope_id = blockId;
     }
-    evidence(`evidence:conditional-${key}`, invocation, [conditionId, blockId],
+    model.CallProfile.find(record => record.id === invocation).condition = {
+      predicate: { kind: 'expression', expression_id: conditionId }, completeness: 'complete'
+    };
+    const conditionEvidence = evidence(`evidence:conditional-${key}`, invocation, [conditionId, blockId],
       { boundary: 'The call occurs inside this source if block. No branch outcome or path feasibility is asserted.' },
-      [sourceSpan(statement)], 'syntax').authority = 'observed';
+      [sourceSpan(statement)], 'syntax');
+    conditionEvidence.authority = 'observed';
+    conditionEvidence.attribute_path = 'condition';
+    coverage(`coverage:conditional-${key}`, invocation, 'condition', 'complete', []);
     conditionalCalls.push({ call_id: invocation, condition_expression_id: conditionId, scope_id: blockId });
   }
   evidence('evidence:RenderContext-identity', 'symbol:RenderContext', ['decl:RenderContext-forward', 'decl:RenderContext', contextId],
@@ -500,7 +506,7 @@ int main() {
       { boundary: 'One known non-virtual source definition within this assessed source. No linker or runtime target completeness is claimed.' });
   }
   add('Diagnostic', contextual({ id: 'diagnostic:projection', severity: 'info', code: 'ILLUSTRATIVE_COVERAGE',
-    subject_id: 'unit:example', message: 'This hand-authored v2 projection omits stream insertion operators and SDK overload sets; execution analysis is outside scope. It is not an analyzer export.' }));
+    subject_id: 'unit:example', message: 'This hand-authored projection omits stream insertion operators and SDK overload sets; execution analysis is outside scope. It is not an analyzer export.' }));
   add('Diagnostic', contextual({ id: 'diagnostic:dependency-cycle', severity: 'info', code: 'STRUCTURAL_DEPENDENCY_CYCLE',
     subject_id: 'call:finalize-update', span: sourceSpan(within('owner_manager_->update_scene()', ranges.finalize)),
     message: 'The project member relationships contain a structural cycle. Cyclic dependencies are permitted; these records do not prove execution, branch outcomes, termination, or simultaneous applicability. The program is not executed.' }));
@@ -562,7 +568,7 @@ int main() {
       'The outer factory’s second argument is call:manager-get, not a flattened manager expression. Explicit receivers live in member-access operands; CallProfile alone stores the callee and source arguments.',
       'shared_ptr<RenderContext> is a generic application; SceneManager* is a pointer layer over a nominal class type. Supplied public C++17 type contracts support auto and get() result types, independently of SDK overload resolution.',
       'Known non-virtual project calls have complete relevant local candidate scopes. Standard-library calls remain unsupported with unknown candidate scope and no selected target; type contracts do not invent resolved factory or move signatures.',
-      'References, resolutions, and type bindings support derived component dependencies. Source if blocks retain their relationships without execution claims. ImplementationSet is optional source-definition knowledge; v2 requires no control/data-flow or runtime-state records.'
+      'References, resolutions, and type bindings support derived component dependencies. Source if blocks retain their relationships without execution claims. ImplementationSet is optional source-definition knowledge; the model requires no control/data-flow or runtime-state records.'
     ]
   };
 })();

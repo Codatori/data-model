@@ -87,6 +87,7 @@
 
 body { background: var(--bg); }
 ::selection { background: var(--action-bg); color: var(--action-ink); }
+.brand-lockup { display: inline-flex; align-items: center; gap: 2px; }
 .brand-wordmark { color: var(--ink); font-size: 23px; letter-spacing: -.9px; font-weight: 650; }
 .brand-period { color: var(--brand-accent); }
 .theme-picker { position: relative; display: flex; align-items: center; gap: 8px; flex-shrink: 0; color: var(--muted); font-size: 10px; }

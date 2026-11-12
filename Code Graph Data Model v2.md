@@ -282,6 +282,7 @@ An extension of `Expression(kind: call | construction)`.
 | `call_kind` ! | `ordinary`, `constructor`, `operator`, `indirect`, `delegated_constructor`, `language_specific` | Invocation semantics. |
 | `callee_expression_id` ! | `Id -> Expression` | Called name, member access, function pointer, or callable object. |
 | `arguments` ! | Ordered list of `Argument` | Complete syntactic argument collection. |
+| `condition` ? | `CallCondition` | Known branch restrictions on reaching this call occurrence. |
 
 `Argument` contains `expression_id` !, `name` ?, `expansion` ! (`none`, `sequence`, `mapping`, `pack`), and `passing_mode` ?. Its order matches source order. `name` denotes a named argument label, not a copy of an already resolved parameter name.
 
@@ -290,6 +291,25 @@ Explicit generic or template arguments are represented by `TypeUse(subject_id: c
 For call or construction expressions, `operands` does not duplicate the callee and arguments: these references are stored only in `CallProfile`. The receiver is stored as the base operand of the callee member-access expression; an independent receiver copy in the call is not required. Semantic receiver conversions are stored in the receiver binding without changing the source expression.
 
 There are no separate method name, signature string, caller name, or argument count fields. Callable ownership is determined by the nearest callable scope. A lambda's lexical parent does not become the caller of its body. A call at module or global initialization level retains its module scope rather than a fabricated function.
+
+### CallCondition
+
+An optional embedded structure describing source-level restrictions on reaching a call or selecting one of its possible targets. It has no separate identity and is not a prediction that the call executes.
+
+| Attribute | Type | Purpose |
+| --- | --- | --- |
+| `predicate` ! | Structured expression | Variants: `expression(expression_id)`, `not(predicate)`, `and(predicates)`, `or(predicates)`, `unknown(reason)`. |
+| `completeness` ! | `complete`, `partial`, `unknown` | Whether all restrictions within the explicitly assessed area are represented. |
+
+Each predicate has a `kind` discriminator. Its other required attributes are `expression_id` for `expression`, `predicate` for `not`, `predicates` (a list) for `and` or `or`, and `reason` for `unknown`. A `CallCondition` is embedded in its owning record, not exported as a standalone entity.
+
+`expression_id` references an existing `Expression` whose truth value is tested under the source language rules. Its spelling, operands, references, and available type bindings remain in the base model. `not` represents the opposite branch; `and` combines nested restrictions; `or` preserves alternative conditions. Unknown portions MUST NOT be silently omitted from a predicate claimed to be complete. An absent condition means not recorded or unknown, not unconditional. A complete empty `and` MAY explicitly represent no restrictions within the assessed area.
+
+On `CallProfile`, the condition describes branch restrictions on reaching that occurrence, including `if`/`else`, conditional expressions, short-circuit operands, and other supported conditional constructs. On a `ResolutionCandidate`, it describes restrictions on selecting that target, for example when a configuration-dependent assignment chooses a provider before a shared call site. Both conditions apply together; they are not interchangeable. Conditions governing a lambda's creation do not automatically govern calls in its body.
+
+Evidence for a condition uses the enclosing call or Resolution as `subject_id` and the corresponding `attribute_path`, including the candidate position when applicable. Coverage uses the same subject and an AttributePath dimension to state the assessed area, unsupported constructs, and missing information. `complete` concerns the captured restrictions within that area, not proof of reachability, path feasibility, termination, or discovery of every runtime target. Target conditions derived through assignments or configuration require supporting semantic evidence; a matching name or lexical proximity is insufficient. Unavailable configuration values or predicates remain explicitly unknown rather than being fabricated.
+
+For `if (config.useCloud) cloud.send(); else local.send();`, the two call profiles MAY carry `expression(test_id)` and `not(expression(test_id))`. For `provider = config.useCloud ? cloud : local; provider.send();`, supported target candidates MAY carry those respective predicates while the call occurrence itself has no such branch restriction. Propagating the latter conditions requires additional analysis and is not required for conformance. Recording either form does not require evaluating the configuration or executing the program.
 
 ## 8. References, Binding, and Implementations
 
@@ -320,7 +340,9 @@ Spelling is obtained from the span, and scope from `site_id`. Multiple names in 
 | `type_substitutions` ! | Mapping from type parameter IDs to type IDs or expression IDs | Generic inference or template substitution. |
 | `reason_codes` ! | Set of strings | Reasons for ambiguity, incompleteness, or failure. |
 
-`ResolutionCandidate`: `target_symbol_id` !, `applicability` ! (`applicable`, `inapplicable`, `unknown`), `reason_codes` !, and `conversions` !. Ranking is preserved through language-specific evidence; a universal numeric scale is not required.
+`ResolutionCandidate`: `target_symbol_id` !, `applicability` ! (`applicable`, `inapplicable`, `unknown`), `reason_codes` !, `conversions` !, and `condition` ? (`CallCondition`). The condition optionally describes target selection for a call or construction; it is not applicable to reference lookup. Ranking is preserved through language-specific evidence; a universal numeric scale is not required.
+
+A target condition does not establish applicability, candidate completeness, or a unique selection. Supported conditional alternatives remain candidates even when the configuration value is unknown. A predicate alone MUST NOT be used to promote an ambiguous or partial result to `resolved`; the existing selection requirements still apply. If the selected target has a recorded candidate condition, derived selected-target relationships retain it.
 
 Resolution MUST preserve all targets identified as applicable or potentially applicable from the available source and semantic evidence, even when no single target can be selected. Unknown candidates require supporting evidence; a matching name alone does not establish a possible dependency. This does not guarantee discovery of every runtime target: missing types, dependencies, reflection, and dynamic dispatch may leave the candidate set partial or unknown.
 
@@ -406,6 +428,8 @@ Structural dependencies are derived from references, resolutions, imports, type 
 
 A relationship found inside a conditional branch is retained without proving that the branch executes. Presence conditions describe source applicability, not execution paths. Component-level relationships MAY aggregate occurrences and analysis configurations, retaining their supporting records and uncertainty rather than duplicating an edge for every occurrence. Aggregation does not imply that all relationships apply simultaneously in one configuration.
 
+Derived call relationships (`CALLS`, `INVOKES`, or equivalent view labels) MUST retain any recorded call-occurrence and target-selection conditions, their completeness, and supporting records. The effective restriction for one occurrence and target is the conjunction of its call and candidate predicates; an absent condition remains unknown rather than becoming true. Aggregation MUST preserve the association between each target, occurrence, context, and its conditions instead of combining predicates from different contexts or losing conditional alternatives. `CallCondition` does not replace `PresenceCondition`: a runtime application setting tested by an expression differs from source activation under an AnalysisContext.
+
 AnalysisContext identifies static language and dependency settings, not a runtime state. Neither execution tracing nor branch-sensitive value tracking is required for conformance. Indirect or dynamic references preserve known candidates and explicit limitations; unavailable targets are not fabricated. These graph edges are derived views, not duplicate canonical SemanticRelation records.
 
 ## 11. Evidence, Properties, and Completeness
@@ -471,6 +495,7 @@ Required attributes: `severity` (`info`, `warning`, `error`), `code`, and `messa
 14. Variant profile attributes occur only on permitted base categories. An unsupported construct receives an unknown or language-specific form and a diagnostic.
 15. At most one current Resolution exists for a `(subject_id, context_id)` pair. Historical or alternative decisions are not presented as simultaneously active.
 16. ImplementationSet refers to a resolved callable target; definitions belong to that target or to established dispatch implementations. Set completeness requires separate evidence.
+17. Recorded call and target-selection conditions preserve their source expressions, scope, context, evidence, and assessed completeness. Unknown or absent conditions do not establish unconditional execution, and a conditional target does not by itself establish a resolved selection.
 
 ## 13. Construct Coverage
 
@@ -480,6 +505,7 @@ Required attributes: `severity` (`info`, `warning`, `error`), `code`, and `messa
 | Function, method, overload | Separate callable symbol, occurrences, profile, parameters, type bindings. |
 | Field, variable, shadowing | Symbol, Declaration, scope, initializer, available type bindings. |
 | Direct or member call | Call expression, callee reference, base expression when present, arguments, Resolution. |
+| Conditional call or configuration-dependent target | Base call records and supported candidates; optional CallCondition on the call occurrence and on individual resolution candidates, with evidence and explicit assessment boundaries when recorded. |
 | Call chain | Separate nested expressions and their result types. |
 | Constructor, operator, or indirect invocation | CallProfile of the corresponding category; intrinsics are not disguised as user-defined callables. |
 | Named, default, spread, or variadic arguments | Source arguments, ParameterProfile, available argument bindings. |
@@ -499,5 +525,7 @@ Required attributes: `severity` (`info`, `warning`, `error`), `code`, and `messa
 **Semantic dataset** additionally contains established identities, available type bindings, resolutions with known and possible targets, inheritance, override, capture, and import relations, and evidence. ImplementationSet MAY record available source definitions and possible overrides. Incomplete areas are permitted only with explicit coverage boundaries. This is the target level for a structural component dependency graph; a unique call target is not required to preserve possible dependencies.
 
 Neither conformance level requires execution-path analysis, runtime target prediction, or proof that a conditional relationship executes.
+
+Both levels MAY additionally preserve known call-occurrence conditions; semantic datasets MAY preserve supported target-selection conditions. Missing condition analysis does not lower conformance and MUST NOT be interpreted as evidence that calls or targets are unconditional. When conditions are recorded, their integrity and retention in derived dependency views are required as specified above.
 
 Each analysis tool declares its achieved level and coverage of individual areas. The presence of a syntax tree is not evidence of semantic completeness. Sufficiency is determined by model integrity, completeness of the required entities, and the authority of specific relationships, not by serialization format.

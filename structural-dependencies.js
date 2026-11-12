@@ -61,6 +61,7 @@
       return [...new Set([...targets, ...children.flatMap(child => typeTargets(child, visited))])];
     }
     const evidenceFor = id => (model.Evidence || []).filter(record => record.subject_id === id);
+    const callProfiles = new Map((model.CallProfile || []).map(record => [record.id, record]));
     function sourceConditions(id) {
       if (!id) return [];
       const record = get(id);
@@ -75,13 +76,17 @@
       return conditions;
     }
     const edges = [];
-    function add(from, to, kind, certainty, record, siteId = record.subject_id) {
+    function add(from, to, kind, certainty, record, siteId = record.subject_id, candidate) {
       get(from); get(to);
-      const evidence = evidenceFor(record.id);
+      const evidence = [...evidenceFor(record.id), ...evidenceFor(siteId)];
       const coverage = (model.Coverage || []).filter(item => [record.id, siteId].includes(item.subject_id));
       edges.push({
         from, to, kind, certainty, context_id: record.context_id,
         candidate_set_completeness: record.candidate_set_completeness,
+        ...(kind === 'call' ? {
+          call_condition: callProfiles.get(siteId)?.condition,
+          target_condition: candidate?.condition
+        } : {}),
         supporting_ids: [...new Set([record.id, siteId, ...evidence.map(item => item.id), ...coverage.map(item => item.id)].filter(Boolean))],
         presence_conditions: [record.presence_condition, ...sourceConditions(siteId)].filter(value => value !== undefined)
       });
@@ -96,7 +101,8 @@
         resolution.candidates.some(candidate => candidate.applicability === 'unknown'))) {
         throw new Error(`Selected target lacks an established complete candidate scope: ${resolution.id}`);
       }
-      if (selected) add(from, selected, kind, 'selected', resolution);
+      if (selected) add(from, selected, kind, 'selected', resolution, subject.id,
+        resolution.candidates.find(candidate => candidate.target_symbol_id === selected));
       for (const [index, candidate] of resolution.candidates.entries()) {
         if (candidate.target_symbol_id === selected || candidate.applicability === 'inapplicable') continue;
         if (!['applicable', 'unknown'].includes(candidate.applicability)) throw new Error('Unsupported candidate applicability');
@@ -105,7 +111,7 @@
           evidence.attribute_path === `candidates[${index}]`)) {
           throw new Error(`Possible unknown target needs evidence: ${resolution.id}`);
         }
-        add(from, candidate.target_symbol_id, kind, 'possible', resolution);
+        add(from, candidate.target_symbol_id, kind, 'possible', resolution, subject.id, candidate);
       }
     }
     for (const binding of model.TypeBinding || []) {

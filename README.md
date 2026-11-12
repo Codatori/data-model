@@ -1,4 +1,14 @@
-# Code Graph model explorer v2
+<h1 align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="codatori-logo-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="codatori-logo-light.svg">
+    <img src="codatori-logo-light.svg" width="48" height="48" align="absmiddle" alt="">
+  </picture>
+  codatori.
+</h1>
+<p align="center">Understanding beyond syntax</p>
+
+## Code Graph model explorer
 
 Open `index.html` in a browser. The single-page presentation works offline, with
 plain HTML, CSS, and JavaScript and no packages or external services.
@@ -27,15 +37,19 @@ component styles and graph edges reference semantic tokens.
   member-reference row to follow its references. **Components** aggregates
   supporting occurrences; **Member references** shows declaration-level call
   dependencies without implying execution order.
-- **Structural dependency graph:** v2 derives relationships rather than adding
+- **Structural dependency graph:** the model derives relationships rather than adding
   another canonical entity. Selected targets establish links; supported
   applicable or unknown candidates remain possible, and inapplicable candidates
   are excluded. Expand a component pair to inspect provenance, static contexts,
   relationship kinds, and per-occurrence certainty.
+  Optional `CallCondition` values preserve branch restrictions on call occurrences
+  separately from configuration-dependent target-selection restrictions. Derived
+  call edges retain both predicates and their completeness per occurrence/context;
+  absent conditions mean unknown, not unconditional.
 - **Full specification:** read every section of the canonical document with
   clickable structure names.
 - **Semantic relations:** a dedicated reference for all 13 relation kinds in
-  v2 §9, with exact endpoint categories, plain-language explanations, source
+  §9, with exact endpoint categories, plain-language explanations, source
   fragments, JSON record shapes, and common misinterpretations. Open it from
   the header or the SemanticRelation structure; `index.html#semantics` opens it
   directly. The `imports_from` example links to the actual C++ walkthrough
@@ -65,22 +79,24 @@ blocks remain visible without asserting branch execution, feasibility, or
 termination. A `PresenceCondition` concerns source/configuration applicability,
 not a runtime branch. Aggregated contexts need not apply simultaneously.
 
-V2 has **28 named structures across seven layers** and **two conformance levels**:
+The model has **29 named structures across seven layers** and **two conformance levels**:
 syntactic and semantic. The semantic level targets structural component
 dependencies; a unique selected target is not required to preserve supported
 possible dependencies. `ImplementationSet` is optional source-definition
 knowledge, not a linker/runtime completeness guarantee. `SourceMapping`,
-`FlowNode`, `FlowEdge`, and `DataFlowRelation` are no longer part of this model.
+`FlowNode`, `FlowEdge`, and `DataFlowRelation` are not part of this model.
 Source transformation and execution-path analysis are outside its scope.
+Recording known branch or target-selection predicates does not require proving
+that a branch executes. Propagating provider-selection conditions through
+assignments is optional additional analysis, not a conformance requirement.
 
 Press `Escape` to leave the expanded map. Validate the teaching model with
 `node --test example-model.test.mjs`.
 
 ## Updating the document
 
-`Code Graph Data Model v2.md` is the active source of truth.
-`Code Graph Data Model.md` is retained as the previous version, not loaded by the
-presentation. After editing v2, run:
+`Code Graph Data Model v2.md` is the sole specification and source of truth.
+After editing the specification, run:
 
 ```sh
 node build-model.mjs

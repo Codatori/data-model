@@ -2,8 +2,8 @@
   'use strict';
 
   const themes = {
-    'zen-graph': { tagline: 'CLARITY FROM COMPLEXITY', canvas: '--rice' },
-    'midnight-satori': { tagline: 'UNDERSTANDING BEYOND SYNTAX', canvas: '--midnight' }
+    'zen-graph': { tagline: 'CLARITY FROM COMPLEXITY', canvas: '--rice', logo: 'codatori-logo-light.svg' },
+    'midnight-satori': { tagline: 'UNDERSTANDING BEYOND SYNTAX', canvas: '--midnight', logo: 'codatori-logo-dark.svg' }
   };
   const storageKey = 'codatori.theme';
   let current = 'zen-graph';
@@ -31,6 +31,7 @@
       document.documentElement.dataset.theme = current;
       picker.value = current;
       tagline.textContent = themes[current].tagline;
+      document.querySelector('.brand-icon').src = themes[current].logo;
       document.querySelector('meta[name="theme-color"]').content =
         getComputedStyle(document.documentElement).getPropertyValue(themes[current].canvas).trim();
       status.textContent = message;
