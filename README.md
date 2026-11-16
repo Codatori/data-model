@@ -25,9 +25,16 @@ component styles and graph edges reference semantic tokens.
   or documentation, or focus on the selected structure's connections. The map
   has room for the full structure, with attributes below rather than squeezing
   it into a narrow column. Use zoom, **Fit all**, or **Expand map** for an overview.
-  Overview mode uses compact, balanced columns so structure names and connections
-  remain readable; full descriptions stay in the attributes below the map.
-  Click relationship badges or edge labels to see their fields and explanations.
+  The map is a directed schema graph with one node per type, starting at
+  **Repository → Project** and continuing through analysis, declarations, expressions,
+  types, and resolution. Named arrows include cross-links and self-links, not just
+  a filesystem or ownership tree. **Structure** shows the main connections plus all
+  references involving the selected type; **All links** includes the remaining
+  semantic and metadata references. **Focus on connections** isolates the selected
+  type's neighborhood. Click an edge label for the exact fields and constraints.
+  Inverse labels such as **HAS PROJECT** explicitly identify the stored reference
+  (`Project.repository_id`) in their explanation. Connections are permitted by the
+  schema, not mandatory for every record or evidence that a program executes.
 - **Guided walkthrough:** explore the supplied C++ `Engine` example, with
   `SceneManager`, `RenderContext`, and `main`. Focused excerpts link forward
   declarations, out-of-class definitions, nested and member calls, smart-pointer
@@ -48,14 +55,17 @@ component styles and graph edges reference semantic tokens.
   absent conditions mean unknown, not unconditional.
 - **Full specification:** read every section of the canonical document with
   clickable structure names.
-- **Semantic relations:** a dedicated reference for all 13 relation kinds in
+- **Semantic relations:** a dedicated reference for all 12 direct edge labels in
   §9, with exact endpoint categories, plain-language explanations, source
-  fragments, JSON record shapes, and common misinterpretations. Open it from
-  the header or the SemanticRelation structure; `index.html#semantics` opens it
+  fragments, source-node JSON excerpts, and common misinterpretations. Open it from
+  the header or a participating source structure; `index.html#semantics` opens it
   directly. The `imports_from` example links to the actual C++ walkthrough
   record. Other fragments are independent illustrations, not invented facts
   about the supplied C++ program. Kind names, endpoints, and kind-specific
-  information are read from the active specification.
+  information are read from the active specification. Each relationship is a
+  direct edge, without an intermediate node or canonical edge ID. Object
+  serialization uses outgoing lists such as `inherits`, `overrides`, and
+  `imports_from` on the source node, with context, state, and typed edge details.
 
 Use `/` to focus search and `Escape` to clear it. The graph's arrows indicate
 stored references or embedded values; dashed connections denote shared-identity
@@ -90,7 +100,59 @@ Recording known branch or target-selection predicates does not require proving
 that a branch executes. Propagating provider-selection conditions through
 assignments is optional additional analysis, not a conformance requirement.
 
-Press `Escape` to leave the expanded map. Validate the teaching model with
+`TypeProfile` describes a declared type symbol; `TypeExpression` describes a
+semantic type structure; `TypeUse` preserves an actual source spelling.
+Direct `HAS_TYPE` edges connect declarations, expressions, type uses, and optional
+symbol summaries to `TypeExpression`, carrying context, role, and certainty.
+Object serialization embeds these edges in the source entity's `has_type` list;
+there are no separate binding nodes or edge IDs. Inferred types do not require
+fabricated `TypeUse` records. Derived dependencies retain the source subject,
+type-expression target, edge path, context, evidence, and candidate uncertainty.
+
+Any existing node or edge may optionally contain `semantic_properties` with
+available analysis results. Entries carry a name, typed value, state, and context;
+they may inherit the owning node or edge's explicit context. They have no IDs or
+separate subject references and can be saved with the existing create/update
+operation. No dedicated property collection pass is required. Absence means not
+recorded; explicit unknown or not-applicable values use `null`, not `false` or zero.
+Candidate values and different contexts remain distinct, and canonical fields or
+typed edge details are not duplicated. Evidence and coverage identify an embedded
+edge or property through its source node and precise path, such as
+`imports_from[0]` or `semantic_properties[0]`. Property-specific support does not
+establish the containing relationship. The C++ example attaches `value_category:
+prvalue` to its integer argument expression without duplicating the literal value.
+
+Project structure is available before code analysis and supplies the boundaries
+for both code conformance levels. `Repository` describes the workspace; discovery configuration is stored
+outside this model. `Coverage` and `Diagnostic` describe incomplete structural
+results. Each recognized project descriptor identifies a
+`Project`; `Directory` and `ProjectFile` inventory code and non-code entries.
+Direct `CONTAINS` edges record membership, `EXTERNAL` edges link projects to
+`ExternalLibrary`, and `DEPENDS_ON` edges link same-repository projects. These
+edges have no separate canonical IDs or intermediate relationship nodes. Object
+serialization uses outgoing `contains`, `external`, and `depends_on` lists on
+each project; graph serialization represents those same facts as direct edges.
+Project hierarchy, physical directories, and build dependencies remain distinct;
+shared files may belong to multiple projects. `Project` is the single minimum
+boundary of code organization and analysis; no separate `Module` entity exists.
+`AnalysisContext.project_id` connects analysis directly to its project; multiple
+build configurations use multiple contexts of that same project.
+`SourceFile.project_file_id` connects analyzed text to the inventory without
+conflating filesystem entries with source text versions. Language packages and
+modules remain directories, declarations, or symbols inside a descriptor-based project.
+Declaration nesting uses `parent_declaration_id`; expressions and imports refer
+directly to their containing declaration and analysis unit. Type uses inherit
+containment through their subjects. Standalone lexical-area nodes are not part
+of the model. Block name lookup remains internal to the analyzer; resolved
+references, distinct symbol identities, and recorded conditions preserve its
+available results. Lambda and local-function body calls belong to their own
+callable declarations, not the enclosing function.
+The app documents these records; it does not scan repositories or resolve builds.
+The C++ teaching example includes an explicitly hand-authored `CMakeLists.txt`
+descriptor in its records, separate from the original C++ snippet. It is not a
+discovered repository file, and no build or library resolution is performed.
+
+Press `Escape` to leave the expanded map. Validate the teaching model and schema graph with
 `node --test example-model.test.mjs`.
 
 ## Updating the document

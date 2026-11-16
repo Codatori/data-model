@@ -118,10 +118,11 @@ int main() {
   };
   const contextId = 'context:cpp17';
   const model = Object.fromEntries([
-    'CodeDataset', 'SourceFile', 'Module', 'AnalysisContext', 'AnalysisUnit',
-    'Scope', 'Symbol', 'Declaration', 'TypeProfile', 'CallableProfile', 'ParameterProfile',
-    'Import', 'Expression', 'CallProfile', 'Reference', 'Type', 'TypeUse', 'TypeBinding',
-    'Resolution', 'ImplementationSet', 'SemanticRelation', 'Evidence', 'Coverage', 'Diagnostic'
+    'CodeDataset', 'Repository', 'Project', 'Directory', 'ProjectFile',
+    'SourceFile', 'AnalysisContext', 'AnalysisUnit',
+    'Symbol', 'Declaration', 'TypeProfile', 'CallableProfile', 'ParameterProfile',
+    'Import', 'Expression', 'CallProfile', 'Reference', 'TypeExpression', 'TypeUse',
+    'Resolution', 'ImplementationSet', 'Evidence', 'Coverage', 'Diagnostic'
   ].map(category => [category, []]));
   const add = (category, record) => { model[category].push(record); return record; };
   const contextual = record => ({ ...record, context_id: contextId });
@@ -132,17 +133,23 @@ int main() {
   function symbol(id, name, kind, owner, origin = 'source') {
     return add('Symbol', { id, name, kind, ...(owner ? { owner_symbol_id: owner } : {}), origin, identity_state: 'established' });
   }
-  function scope(id, kind, parent, owner, range) {
-    return add('Scope', { id, unit_id: 'unit:example', kind, ...(parent ? { parent_scope_id: parent } : {}),
-      ...(owner ? { owner_declaration_id: owner } : {}), ...(range ? { span: sourceSpan(range) } : {}) });
+  function containment(declarationId) {
+    return { unit_id: 'unit:example', ...(declarationId ? { declaration_id: declarationId } : {}) };
   }
-  function declaration(id, symbolId, scopeId, range, options = {}) {
+  const bodySpan = range => sourceSpan({ start: code.indexOf('{', range.start), end: range.end - Number(code[range.end - 1] === ';') });
+  function declaration(id, symbolId, parentDeclarationId, range, options = {}) {
     const name = model.Symbol.find(record => record.id === symbolId).name;
-    return add('Declaration', { id, symbol_id: symbolId, scope_id: scopeId, form: 'definition',
+    return add('Declaration', { id, symbol_id: symbolId, unit_id: 'unit:example',
+      ...(parentDeclarationId ? { parent_declaration_id: parentDeclarationId } : {}), form: 'definition',
       span: sourceSpan(range), name_span: sourceSpan(within(name, range)), modifiers: [], ...options });
   }
-  const bind = (id, subject, type, role = 'declared') =>
-    add('TypeBinding', contextual({ id, subject_id: subject, type_id: type, role, state: 'established' }));
+  function bind(subject, type, role = 'declared') {
+    const source = ['Declaration', 'Expression', 'TypeUse', 'Symbol']
+      .flatMap(category => model[category]).find(record => record.id === subject);
+    if (!source) throw new Error(`Missing HAS_TYPE source: ${subject}`);
+    source.has_type ??= [];
+    source.has_type.push(contextual({ target_id: type, role, state: 'established' }));
+  }
   function resolved(id, subject, target, extra = {}) {
     const result = add('Resolution', contextual({
       id, subject_id: subject, state: 'resolved', selected_target_id: target,
@@ -166,44 +173,44 @@ int main() {
     }));
   }
   const declaredTypes = new Map();
-  function typedDeclaration(id, symbolId, scopeId, range, type, options = {}) {
-    const record = declaration(id, symbolId, scopeId, range, options);
+  function typedDeclaration(id, symbolId, parentDeclarationId, range, type, options = {}) {
+    const record = declaration(id, symbolId, parentDeclarationId, range, options);
     declaredTypes.set(symbolId, type);
-    bind(`binding:${id}`, id, type, options.inferred ? 'inferred' : 'declared');
+    bind(id, type, options.inferred ? 'inferred' : 'declared');
     delete record.inferred;
     return record;
   }
-  function typeUse(id, subject, scopeId, range, form, role, type, position) {
-    add('TypeUse', { id, subject_id: subject, scope_id: scopeId, span: sourceSpan(range), form, role,
+  function typeUse(id, subject, range, form, role, type, position) {
+    add('TypeUse', { id, subject_id: subject, span: sourceSpan(range), form, role,
       ...(position !== undefined ? { position } : {}) });
-    if (type) bind(`binding:${id}`, id, type);
+    if (type) bind(id, type);
     return id;
   }
-  function namedExpression(id, scopeId, range, symbolId, role = 'read') {
-    add('Expression', { id, scope_id: scopeId, span: sourceSpan(range), kind: 'name', operands: [] });
+  function namedExpression(id, declarationId, range, symbolId, role = 'read') {
+    add('Expression', { id, ...containment(declarationId), span: sourceSpan(range), kind: 'name', operands: [] });
     reference(`reference:${id}`, id, range, role, symbolId);
-    if (declaredTypes.has(symbolId)) bind(`binding:${id}`, id, declaredTypes.get(symbolId), 'inferred');
+    if (declaredTypes.has(symbolId)) bind(id, declaredTypes.get(symbolId), 'inferred');
     return id;
   }
-  function literal(id, scopeId, text, range, category, value, type) {
-    add('Expression', { id, scope_id: scopeId, span: sourceSpan(within(text, range)), kind: 'literal',
+  function literal(id, declarationId, text, range, category, value, type) {
+    add('Expression', { id, ...containment(declarationId), span: sourceSpan(within(text, range)), kind: 'literal',
       operands: [], literal: { category, value } });
-    bind(`binding:${id}`, id, type, 'inferred');
+    bind(id, type, 'inferred');
     return id;
   }
   const methodDefinitions = new Map();
-  function call(key, scopeId, text, range, options = {}) {
+  function call(key, declarationId, text, range, options = {}) {
     const callId = `call:${key}`, calleeId = `callee:${key}`;
     const callRange = within(text, range);
     const calleeRange = { start: callRange.start, end: code.indexOf('(', callRange.start) };
     let receiver;
     if (options.receiver) {
-      receiver = namedExpression(`receiver:${key}`, scopeId, within(options.receiver.name, calleeRange), options.receiver.symbol);
-      add('Expression', { id: calleeId, scope_id: scopeId, span: sourceSpan(calleeRange),
+      receiver = namedExpression(`receiver:${key}`, declarationId, within(options.receiver.name, calleeRange), options.receiver.symbol);
+      add('Expression', { id: calleeId, ...containment(declarationId), span: sourceSpan(calleeRange),
         kind: 'member_access', operator: options.receiver.operator,
         operands: [{ role: 'base', expression_id: receiver }] });
-    } else add('Expression', { id: calleeId, scope_id: scopeId, span: sourceSpan(calleeRange), kind: 'name', operands: [] });
-    add('Expression', { id: callId, scope_id: scopeId, span: sourceSpan(callRange), kind: 'call', operands: [] });
+    } else add('Expression', { id: calleeId, ...containment(declarationId), span: sourceSpan(calleeRange), kind: 'name', operands: [] });
+    add('Expression', { id: callId, ...containment(declarationId), span: sourceSpan(callRange), kind: 'call', operands: [] });
     add('CallProfile', { id: callId, call_kind: 'ordinary', callee_expression_id: calleeId,
       arguments: (options.args || []).map(expressionId => ({ expression_id: expressionId, expansion: 'none' })) });
     const templateStart = code.indexOf('<', calleeRange.start);
@@ -212,7 +219,7 @@ int main() {
         ? { start: calleeRange.start, end: templateStart } : calleeRange;
     reference(`reference:${key}-callee`, calleeId, nameRange, 'callee', options.target,
       options.receiver ? 'member' : text.startsWith('std::') ? 'qualified' : 'unqualified');
-    if (options.type) bind(`binding:${callId}`, callId, options.type, 'inferred');
+    if (options.type) bind(callId, options.type, 'inferred');
     if (options.target) {
       const receiverType = options.receiver ? declaredTypes.get(options.receiver.symbol) : null;
       const pointerType = receiverType === 'type:shared-render' ? 'type:render-pointer' : receiverType === 'type:shared-scene' ? 'type:scene-pointer' : null;
@@ -237,27 +244,37 @@ int main() {
     return callId;
   }
 
-  const settings = { module_id: 'module:example', language_settings: { language: 'cpp', standard: 'c++17' },
+  const descriptor = 'cmake_minimum_required(VERSION 3.16)\nproject(EngineExample LANGUAGES CXX)\nadd_executable(engine_example example.cpp)\ntarget_compile_features(engine_example PRIVATE cxx_std_17)\n';
+  const settings = { project_id: 'project:example', language_settings: { language: 'cpp', standard: 'c++17' },
     defines: {}, search_paths: [], dependency_context_ids: [] };
   add('CodeDataset', { id: 'dataset:example-v2', schema_version: 'v2', digest_algorithm: 'fnv1a32',
-    producer: 'codatori. / hand-authored C++ teaching projection', root_module_ids: ['module:example'] });
+    producer: 'codatori. / hand-authored C++ teaching projection', root_project_ids: ['project:example'] });
+  add('Repository', { id: 'repository:example', uri: 'memory:///', name: 'Illustrative Engine workspace' });
+  add('Directory', { id: 'directory:example', uri: 'memory:///' });
+  add('ProjectFile', { id: 'inventory:descriptor', uri: 'memory:///CMakeLists.txt',
+    parent_directory_id: 'directory:example', kind: 'descriptor', content_digest: fingerprint(descriptor) });
+  add('ProjectFile', { id: 'inventory:example', uri: 'memory:///example.cpp',
+    parent_directory_id: 'directory:example', kind: 'source', content_digest: fingerprint(code) });
+  add('Project', { id: 'project:example', repository_id: 'repository:example',
+    descriptor_file_id: 'inventory:descriptor', root_directory_id: 'directory:example',
+    name: 'EngineExample', build_system: 'cmake', kind: 'executable',
+    contains: ['directory:example', 'inventory:descriptor', 'inventory:example'].map(target => ({
+      target_id: target, state: 'established', membership: target === 'inventory:example' ? 'both' : 'physical'
+    })), external: [], depends_on: [] });
+  evidence('evidence:example-project', 'project:example', ['inventory:descriptor', 'inventory:example'],
+    { descriptor_content: descriptor, boundary: 'Hand-authored teaching descriptor added to organize the supplied C++ source. It is not a discovered repository file; no build or dependency resolution was run.' });
   add('SourceFile', { id: 'file:example', uri: 'memory:///example.cpp', content: code,
-    content_digest: fingerprint(code), language: 'cpp', origin: 'source' });
-  add('Module', { id: 'module:example', name: 'Engine example', kind: 'executable' });
+    content_digest: fingerprint(code), language: 'cpp', origin: 'source', project_file_id: 'inventory:example' });
   add('AnalysisContext', { id: contextId, ...settings, context_digest: fingerprint(JSON.stringify(settings)) });
   add('AnalysisUnit', { id: 'unit:example', context_id: contextId,
     entry_file_ids: ['file:example'], participating_file_ids: ['file:example'] });
-  scope('scope:module', 'module', null, null, { start: 0, end: code.length });
   symbol('symbol:Engine', 'Engine', 'namespace');
   symbol('symbol:SceneManager', 'SceneManager', 'type', 'symbol:Engine');
   symbol('symbol:RenderContext', 'RenderContext', 'type', 'symbol:Engine');
-  declaration('decl:Engine', 'symbol:Engine', 'scope:module', ranges.engine, { body_scope_id: 'scope:Engine' });
-  declaration('decl:SceneManager', 'symbol:SceneManager', 'scope:Engine', ranges.scene, { body_scope_id: 'scope:SceneManager' });
-  declaration('decl:RenderContext-forward', 'symbol:RenderContext', 'scope:Engine', locate('class RenderContext;'), { form: 'forward_declaration' });
-  declaration('decl:RenderContext', 'symbol:RenderContext', 'scope:Engine', ranges.render, { body_scope_id: 'scope:RenderContext' });
-  scope('scope:Engine', 'namespace', 'scope:module', 'decl:Engine', ranges.engine);
-  scope('scope:SceneManager', 'type', 'scope:Engine', 'decl:SceneManager', ranges.scene);
-  scope('scope:RenderContext', 'type', 'scope:Engine', 'decl:RenderContext', ranges.render);
+  declaration('decl:Engine', 'symbol:Engine', null, ranges.engine, { body_span: bodySpan(ranges.engine) });
+  declaration('decl:SceneManager', 'symbol:SceneManager', 'decl:Engine', ranges.scene, { body_span: bodySpan(ranges.scene) });
+  declaration('decl:RenderContext-forward', 'symbol:RenderContext', 'decl:Engine', locate('class RenderContext;'), { form: 'forward_declaration' });
+  declaration('decl:RenderContext', 'symbol:RenderContext', 'decl:Engine', ranges.render, { body_span: bodySpan(ranges.render) });
   for (const name of ['SceneManager', 'RenderContext']) add('TypeProfile', {
     id: `symbol:${name}`, type_kind: 'class', type_parameter_ids: []
   });
@@ -286,7 +303,7 @@ int main() {
     { id: 'type:moved-string', kind: 'reference', reference_kind: 'rvalue', element_type_id: 'type:std-string' },
     { id: 'type:moved-context', kind: 'reference', reference_kind: 'rvalue', element_type_id: 'type:shared-render' }
   ];
-  typeRecords.forEach(record => add('Type', { qualifiers: [], completeness: 'complete', ...record }));
+  typeRecords.forEach(record => add('TypeExpression', { qualifiers: [], completeness: 'complete', ...record }));
   const fields = [
     ['scene-name', 'scene_name_', 'SceneManager', 'std::string scene_name_;', 'type:std-string'],
     ['active-context', 'active_context_', 'SceneManager', 'std::shared_ptr<RenderContext> active_context_;', 'type:shared-render'],
@@ -295,7 +312,7 @@ int main() {
   ];
   for (const [key, name, owner, text, type] of fields) {
     symbol(`symbol:${key}`, name, 'field', `symbol:${owner}`);
-    typedDeclaration(`decl:${key}`, `symbol:${key}`, `scope:${owner}`, within(text, owner === 'SceneManager' ? ranges.scene : ranges.render), type, { visibility: 'private' });
+    typedDeclaration(`decl:${key}`, `symbol:${key}`, `decl:${owner}`, within(text, owner === 'SceneManager' ? ranges.scene : ranges.render), type, { visibility: 'private' });
   }
   const methods = [
     ['scene-ctor', 'SceneManager', 'SceneManager', 'sceneCtor', 'constructor'],
@@ -309,19 +326,18 @@ int main() {
   ];
   for (const [key, name, owner, rangeKey, kind] of methods) {
     symbol(`symbol:${key}`, name, 'callable', owner ? `symbol:${owner}` : null);
-    const lexicalScope = key === 'main' ? 'scope:module' : key === 'dispatch' ? 'scope:Engine' : `scope:${owner}`;
-    declaration(`decl:${key}`, `symbol:${key}`, lexicalScope, ranges[rangeKey], {
-      body_scope_id: `scope:${key}`, modifiers: key === 'main' ? [] : key === 'scene-ctor' ? ['explicit', 'inline'] : ['inline'],
+    const parentDeclarationId = key === 'main' ? null : key === 'dispatch' ? 'decl:Engine' : `decl:${owner}`;
+    declaration(`decl:${key}`, `symbol:${key}`, parentDeclarationId, ranges[rangeKey], {
+      body_span: bodySpan(ranges[rangeKey]), modifiers: key === 'main' ? [] : key === 'scene-ctor' ? ['explicit', 'inline'] : ['inline'],
       ...(key !== 'main' ? { visibility: 'public' } : {})
     });
-    scope(`scope:${key}`, 'callable', owner ? `scope:${owner}` : 'scope:module', `decl:${key}`, ranges[rangeKey]);
     add('CallableProfile', { id: `symbol:${key}`, callable_kind: kind, parameter_ids: [],
       type_parameter_ids: [], receiver_mode: owner ? 'instance' : 'none', variadic_style: 'none', receiver_qualifiers: [] });
     methodDefinitions.set(`symbol:${key}`, `decl:${key}`);
-    if (kind !== 'constructor') bind(`binding:return-${key}`, `decl:${key}`, key === 'main' ? 'type:int' : 'type:void', 'return');
-    if (owner) bind(`binding:receiver-${key}`, `symbol:${key}`, `type:${owner}`, 'receiver');
+    if (kind !== 'constructor') bind(`decl:${key}`, key === 'main' ? 'type:int' : 'type:void', 'return');
+    if (owner) bind(`symbol:${key}`, `type:${owner}`, 'receiver');
   }
-  declaration('decl:dispatch-forward', 'symbol:dispatch', 'scope:SceneManager', within('void dispatch_render_pass();', ranges.scene), {
+  declaration('decl:dispatch-forward', 'symbol:dispatch', 'decl:SceneManager', within('void dispatch_render_pass();', ranges.scene), {
     form: 'declaration', visibility: 'public'
   });
   reference('reference:dispatch-owner', 'decl:dispatch', within('SceneManager', ranges.dispatch), 'type', 'symbol:SceneManager');
@@ -333,29 +349,31 @@ int main() {
   ];
   for (const [key, name, owner, text, range, type] of parameters) {
     symbol(`symbol:${key}`, name, 'parameter', `symbol:${owner}`);
-    typedDeclaration(`decl:${key}`, `symbol:${key}`, `scope:${owner}`, within(text, range), type);
+    typedDeclaration(`decl:${key}`, `symbol:${key}`, `decl:${owner}`, within(text, range), type);
     add('ParameterProfile', { id: `symbol:${key}`, binding_kind: 'positional', passing_mode: 'value' });
     model.CallableProfile.find(profile => profile.id === `symbol:${owner}`).parameter_ids.push(`symbol:${key}`);
   }
 
   for (const header of ['iostream', 'memory', 'string']) {
     const range = locate(`#include <${header}>`);
-    add('Import', { id: `import:${header}`, scope_id: 'scope:module', span: sourceSpan(range),
+    add('Import', { id: `import:${header}`, ...containment(null), span: sourceSpan(range),
       kind: 'include', path_segments: [header], bindings: [] });
     reference(`reference:include-${header}`, `import:${header}`, within(header, range), 'import', null);
   }
-  add('Import', { id: 'import:Engine', scope_id: 'scope:main', span: sourceSpan(within('using namespace Engine;', ranges.main)),
-    kind: 'using', path_segments: ['Engine'], bindings: [{ wildcard: true }] });
+  add('Import', { id: 'import:Engine', ...containment('decl:main'), span: sourceSpan(within('using namespace Engine;', ranges.main)),
+    kind: 'using', path_segments: ['Engine'], bindings: [{ wildcard: true }],
+    imports_from: [contextual({ target_id: 'symbol:Engine', state: 'established' })] });
   reference('reference:using-Engine', 'import:Engine', within('Engine', within('using namespace Engine;', ranges.main)), 'import', 'symbol:Engine');
-  add('SemanticRelation', contextual({ id: 'relation:using-Engine', source_id: 'import:Engine',
-    target_id: 'symbol:Engine', kind: 'imports_from', state: 'established' }));
+  evidence('evidence:using-Engine', 'import:Engine', ['symbol:Engine', contextId],
+    { rule: 'The using directive names the Engine namespace in this analysis context.' },
+    [sourceSpan(within('using namespace Engine;', ranges.main))], 'language_rules').attribute_path = 'imports_from[0]';
 
   function declaredTypeUse(key, text, type, form, role = 'declared', child) {
     const decl = model.Declaration.find(record => record.id === `decl:${key}`);
     const range = { start: decl.span.start_offset, end: decl.span.end_offset };
-    const id = typeUse(`typeuse:${key}`, decl.id, decl.scope_id, within(text, range), form, role, type);
+    const id = typeUse(`typeuse:${key}`, decl.id, within(text, range), form, role, type);
     if (child) {
-      typeUse(`typeuse:${key}-element`, id, decl.scope_id, within(child.name, within(text, range)),
+      typeUse(`typeuse:${key}-element`, id, within(child.name, within(text, range)),
         'named', child.role, child.type, 0);
       reference(`reference:type-${key}-element`, `typeuse:${key}-element`, within(child.name, within(text, range)), 'type', child.symbol);
     }
@@ -375,17 +393,17 @@ int main() {
     { name: 'SceneManager', role: 'declared', type: 'type:SceneManager', symbol: 'symbol:SceneManager' });
   for (const [key, , , rangeKey, kind] of methods) if (kind !== 'constructor') {
     const decl = model.Declaration.find(record => record.id === `decl:${key}`);
-    typeUse(`typeuse:return-${key}`, decl.id, decl.scope_id, within(key === 'main' ? 'int' : 'void', ranges[rangeKey]),
+    typeUse(`typeuse:return-${key}`, decl.id, within(key === 'main' ? 'int' : 'void', ranges[rangeKey]),
       'named', 'return', key === 'main' ? 'type:int' : 'type:void');
   }
 
-  const nameArgument = namedExpression('expression:ctor-name', 'scope:scene-ctor', within('name', within('std::move(name)', ranges.sceneCtor)), 'symbol:ctor-name');
-  const moveName = call('move-name', 'scope:scene-ctor', 'std::move(name)', ranges.sceneCtor, { args: [nameArgument], type: 'type:moved-string' });
-  const contextArgument = namedExpression('expression:set-context-argument', 'scope:set-context', within('context', within('std::move(context)', ranges.set)), 'symbol:set-context-parameter');
-  const moveContext = call('move-context', 'scope:set-context', 'std::move(context)', ranges.set, { args: [contextArgument], type: 'type:moved-context' });
+  const nameArgument = namedExpression('expression:ctor-name', 'decl:scene-ctor', within('name', within('std::move(name)', ranges.sceneCtor)), 'symbol:ctor-name');
+  const moveName = call('move-name', 'decl:scene-ctor', 'std::move(name)', ranges.sceneCtor, { args: [nameArgument], type: 'type:moved-string' });
+  const contextArgument = namedExpression('expression:set-context-argument', 'decl:set-context', within('context', within('std::move(context)', ranges.set)), 'symbol:set-context-parameter');
+  const moveContext = call('move-context', 'decl:set-context', 'std::move(context)', ranges.set, { args: [contextArgument], type: 'type:moved-context' });
   const assignmentRange = within('active_context_ = std::move(context)', ranges.set);
-  const assignmentTarget = namedExpression('expression:assignment-target', 'scope:set-context', within('active_context_', assignmentRange), 'symbol:active-context', 'write');
-  add('Expression', { id: 'expression:assignment', scope_id: 'scope:set-context', span: sourceSpan(assignmentRange), kind: 'assignment',
+  const assignmentTarget = namedExpression('expression:assignment-target', 'decl:set-context', within('active_context_', assignmentRange), 'symbol:active-context', 'write');
+  add('Expression', { id: 'expression:assignment', ...containment('decl:set-context'), span: sourceSpan(assignmentRange), kind: 'assignment',
     operator: '=', operands: [{ role: 'target', expression_id: assignmentTarget }, { role: 'value', expression_id: moveContext }] });
   for (const [field, param, text] of [
     ['frame-id', 'ctor-frame', 'frame_id_(frame_id)'],
@@ -393,65 +411,71 @@ int main() {
   ]) {
     const range = within(text, ranges.renderCtor);
     const parameterRange = { start: range.start + text.indexOf('(') + 1, end: range.end - 1 };
-    namedExpression(`expression:${field}-initializer`, 'scope:render-ctor', parameterRange, `symbol:${param}`);
+    namedExpression(`expression:${field}-initializer`, 'decl:render-ctor', parameterRange, `symbol:${param}`);
   }
 
-  call('update-dispatch', 'scope:update', 'dispatch_render_pass()', ranges.update, { target: 'symbol:dispatch', type: 'type:void' });
-  call('execute-finalize', 'scope:execute', 'finalize_frame()', ranges.execute, { target: 'symbol:finalize', type: 'type:void' });
-  call('dispatch-execute', 'scope:dispatch', 'active_context_->execute_pipeline()', ranges.dispatch, {
+  call('update-dispatch', 'decl:update', 'dispatch_render_pass()', ranges.update, { target: 'symbol:dispatch', type: 'type:void' });
+  call('execute-finalize', 'decl:execute', 'finalize_frame()', ranges.execute, { target: 'symbol:finalize', type: 'type:void' });
+  call('dispatch-execute', 'decl:dispatch', 'active_context_->execute_pipeline()', ranges.dispatch, {
     receiver: { name: 'active_context_', symbol: 'symbol:active-context', operator: '->' },
     name: 'execute_pipeline', target: 'symbol:execute', type: 'type:void'
   });
-  call('finalize-update', 'scope:finalize', 'owner_manager_->update_scene()', ranges.finalize, {
+  call('finalize-update', 'decl:finalize', 'owner_manager_->update_scene()', ranges.finalize, {
     receiver: { name: 'owner_manager_', symbol: 'symbol:owner-manager', operator: '->' },
     name: 'update_scene', target: 'symbol:update', type: 'type:void'
   });
-  const level = literal('expression:level-name', 'scope:main', '"MainGameLevel"', ranges.main, 'string', 'MainGameLevel', 'type:level-name');
-  const factoryManager = call('make-manager', 'scope:main', 'std::make_shared<SceneManager>("MainGameLevel")', ranges.main, {
+  const level = literal('expression:level-name', 'decl:manager-variable', '"MainGameLevel"', ranges.main, 'string', 'MainGameLevel', 'type:level-name');
+  const factoryManager = call('make-manager', 'decl:manager-variable', 'std::make_shared<SceneManager>("MainGameLevel")', ranges.main, {
     args: [level], type: 'type:shared-scene'
   });
   symbol('symbol:manager-variable', 'manager', 'variable', 'symbol:main');
-  typedDeclaration('decl:manager-variable', 'symbol:manager-variable', 'scope:main',
+  typedDeclaration('decl:manager-variable', 'symbol:manager-variable', 'decl:main',
     within('auto manager = std::make_shared<SceneManager>("MainGameLevel");', ranges.main), 'type:shared-scene',
     { initializer_expression_id: factoryManager, inferred: true });
-  const frame = literal('expression:frame-number', 'scope:main', '42', ranges.main, 'integer', 42, 'type:int');
-  const getManager = call('manager-get', 'scope:main', 'manager.get()', ranges.main, {
+  const frame = literal('expression:frame-number', 'decl:context-variable', '42', ranges.main, 'integer', 42, 'type:int');
+  model.Expression.find(record => record.id === frame).semantic_properties = [
+    contextual({ name: 'value_category', value: 'prvalue', state: 'established' })
+  ];
+  evidence('evidence:frame-value-category', frame, [contextId],
+    { rule: 'A C++17 integer literal is a prvalue; this adds no execution claim.' },
+    [sourceSpan(within('42', ranges.main))], 'language_rules').attribute_path = 'semantic_properties[0]';
+  const getManager = call('manager-get', 'decl:context-variable', 'manager.get()', ranges.main, {
     receiver: { name: 'manager', symbol: 'symbol:manager-variable', operator: '.' }, name: 'get', type: 'type:scene-pointer'
   });
-  const factoryContext = call('make-context', 'scope:main', 'std::make_shared<RenderContext>(42, manager.get())', ranges.main, {
+  const factoryContext = call('make-context', 'decl:context-variable', 'std::make_shared<RenderContext>(42, manager.get())', ranges.main, {
     args: [frame, getManager], type: 'type:shared-render'
   });
   symbol('symbol:context-variable', 'context', 'variable', 'symbol:main');
-  typedDeclaration('decl:context-variable', 'symbol:context-variable', 'scope:main',
+  typedDeclaration('decl:context-variable', 'symbol:context-variable', 'decl:main',
     within('auto context = std::make_shared<RenderContext>(42, manager.get());', ranges.main), 'type:shared-render',
     { initializer_expression_id: factoryContext, inferred: true });
   const setCallRange = within('manager->set_render_context(context)', ranges.main);
-  const actualContext = namedExpression('expression:main-context-argument', 'scope:main', within('context', {
+  const actualContext = namedExpression('expression:main-context-argument', 'decl:main', within('context', {
     start: code.indexOf('(', setCallRange.start) + 1, end: setCallRange.end
   }), 'symbol:context-variable');
-  call('main-set-context', 'scope:main', 'manager->set_render_context(context)', ranges.main, {
+  call('main-set-context', 'decl:main', 'manager->set_render_context(context)', ranges.main, {
     receiver: { name: 'manager', symbol: 'symbol:manager-variable', operator: '->' },
     name: 'set_render_context', target: 'symbol:set-context', args: [actualContext],
     parameter: 'symbol:set-context-parameter', type: 'type:void'
   });
-  call('main-update', 'scope:main', 'manager->update_scene()', ranges.main, {
+  call('main-update', 'decl:main', 'manager->update_scene()', ranges.main, {
     receiver: { name: 'manager', symbol: 'symbol:manager-variable', operator: '->' },
     name: 'update_scene', target: 'symbol:update', type: 'type:void'
   });
-  literal('expression:main-return', 'scope:main', '0', within('return 0;', ranges.main), 'integer', 0, 'type:int');
+  literal('expression:main-return', 'decl:main', '0', within('return 0;', ranges.main), 'integer', 0, 'type:int');
   for (const [key, name, type, symbolId] of [
     ['make-manager', 'SceneManager', 'type:SceneManager', 'symbol:SceneManager'],
     ['make-context', 'RenderContext', 'type:RenderContext', 'symbol:RenderContext']
   ]) {
     const range = within(name, within(`std::make_shared<${name}>`, ranges.main));
-    typeUse(`typeuse:${key}-argument`, `call:${key}`, 'scope:main', range, 'named', 'argument', type, 0);
+    typeUse(`typeuse:${key}-argument`, `call:${key}`, range, 'named', 'argument', type, 0);
     reference(`reference:${key}-type`, `typeuse:${key}-argument`, range, 'type', symbolId);
   }
   for (const [key, type] of [['manager-variable', 'type:shared-scene'], ['context-variable', 'type:shared-render']]) {
     const decl = model.Declaration.find(record => record.id === `decl:${key}`);
-    typeUse(`typeuse:${key}`, decl.id, 'scope:main', { start: decl.span.start_offset, end: decl.span.start_offset + 4 },
+    typeUse(`typeuse:${key}`, decl.id, { start: decl.span.start_offset, end: decl.span.start_offset + 4 },
       'language_specific', 'declared', null);
-    bind(`binding:typeuse:${key}`, `typeuse:${key}`, type, 'inferred');
+    bind(`typeuse:${key}`, type, 'inferred');
   }
 
   const conditionalCalls = [];
@@ -463,22 +487,17 @@ int main() {
       ? 'if (active_context_) {\n            active_context_->execute_pipeline();\n        }'
       : 'if (owner_manager_) {\n                owner_manager_->update_scene();\n            }', range);
     const conditionRange = within(condition, statement);
-    const conditionId = namedExpression(`condition:${key}`, `scope:${key}`, conditionRange, symbolId);
-    const blockId = `scope:${key}-conditional`;
-    scope(blockId, 'block', `scope:${key}`, null, { start: code.indexOf('{', statement.start), end: statement.end });
-    for (const expression of model.Expression.filter(record => ['call', 'callee', 'receiver'].some(prefix => record.id === `${prefix}:${key === 'dispatch' ? 'dispatch-execute' : 'finalize-update'}`))) {
-      expression.scope_id = blockId;
-    }
+    const conditionId = namedExpression(`condition:${key}`, `decl:${key}`, conditionRange, symbolId);
     model.CallProfile.find(record => record.id === invocation).condition = {
       predicate: { kind: 'expression', expression_id: conditionId }, completeness: 'complete'
     };
-    const conditionEvidence = evidence(`evidence:conditional-${key}`, invocation, [conditionId, blockId],
+    const conditionEvidence = evidence(`evidence:conditional-${key}`, invocation, [conditionId, `decl:${key}`],
       { boundary: 'The call occurs inside this source if block. No branch outcome or path feasibility is asserted.' },
       [sourceSpan(statement)], 'syntax');
     conditionEvidence.authority = 'observed';
     conditionEvidence.attribute_path = 'condition';
     coverage(`coverage:conditional-${key}`, invocation, 'condition', 'complete', []);
-    conditionalCalls.push({ call_id: invocation, condition_expression_id: conditionId, scope_id: blockId });
+    conditionalCalls.push({ call_id: invocation, condition_expression_id: conditionId, declaration_id: `decl:${key}` });
   }
   evidence('evidence:RenderContext-identity', 'symbol:RenderContext', ['decl:RenderContext-forward', 'decl:RenderContext', contextId],
     { rule: 'The forward declaration and class definition denote the same Engine::RenderContext under C++ class declaration rules.' },
@@ -494,6 +513,10 @@ int main() {
     ] });
   const streamSpans = code.split('\n').filter(line => line.includes('std::cout')).map(line => sourceSpan(locate(line.trim())));
   coverage('coverage:configuration', 'unit:example', 'configuration', 'partial', ['sdk_search_paths_not_exported']);
+  coverage('coverage:projects', 'repository:example', 'projects', 'complete');
+  coverage('coverage:files', 'project:example', 'files', 'complete');
+  coverage('coverage:project-dependencies', 'project:example', 'project_dependencies', 'unknown', ['build_not_evaluated']);
+  coverage('coverage:external-libraries', 'project:example', 'external_libraries', 'unknown', ['library_resolution_not_performed']);
   coverage('coverage:syntax', 'unit:example', 'syntax', 'partial', ['focused_teaching_projection'], streamSpans);
   coverage('coverage:declarations', 'unit:example', 'declarations', 'partial', ['project_declarations_only']);
   coverage('coverage:calls', 'unit:example', 'calls', 'partial', ['stream_operator_and_implicit_library_calls_omitted'], streamSpans);
@@ -514,34 +537,34 @@ int main() {
   const excerpt = (caption, range) => ({ caption, span: sourceSpan(range) });
   window.CODE_GRAPH_EXAMPLE = {
     filename: 'example.cpp', code, model,
-    sourceNote: 'This teaching input was normalized from the supplied Markdown before analysis: escapes before underscores and pointer asterisks were removed. Analysis preserves this input unchanged, including the supplied C++ string literals.',
+    sourceNote: 'This teaching input was normalized from the supplied Markdown before analysis: escapes before underscores and pointer asterisks were removed. Analysis preserves this input unchanged, including the supplied C++ string literals. A separate hand-authored CMakeLists.txt teaching descriptor supplies the project boundary; it is not part of the original snippet, and no build was run.',
     steps: [
-      ['CodeDataset', 'SourceFile', 'Module', 'AnalysisContext', 'AnalysisUnit', 'Import'],
-      ['Symbol', 'Declaration', 'Scope', 'TypeProfile', 'CallableProfile', 'ParameterProfile'],
+      ['CodeDataset', 'Repository', 'Project', 'Directory', 'ProjectFile', 'SourceFile', 'AnalysisContext', 'AnalysisUnit', 'Import'],
+      ['Symbol', 'Declaration', 'TypeProfile', 'CallableProfile', 'ParameterProfile'],
       ['Expression', 'CallProfile', 'Reference'],
-      ['Type', 'TypeUse', 'TypeBinding'],
+      ['TypeExpression', 'TypeUse', 'Declaration', 'Expression', 'Symbol'],
       ['Resolution'],
-      ['ImplementationSet', 'Evidence', 'Coverage', 'Diagnostic', 'Scope', 'Expression']
+      ['ImplementationSet', 'Evidence', 'Coverage', 'Diagnostic', 'Expression']
     ],
     stepRecordIds: [
       null,
       ['symbol:Engine', 'symbol:SceneManager', 'symbol:RenderContext', 'symbol:dispatch', 'symbol:scene-ctor', 'symbol:ctor-name',
         'decl:RenderContext-forward', 'decl:RenderContext', 'decl:dispatch-forward', 'decl:dispatch', 'decl:ctor-name',
-        'scope:Engine', 'scope:SceneManager', 'scope:dispatch'],
+        'decl:Engine', 'decl:SceneManager'],
       ['call:make-context', 'callee:make-context', 'call:manager-get', 'callee:manager-get', 'receiver:manager-get', 'expression:frame-number',
         'call:dispatch-execute', 'callee:dispatch-execute', 'receiver:dispatch-execute', 'call:update-dispatch', 'callee:update-dispatch',
         'reference:make-context-callee', 'reference:manager-get-callee', 'reference:dispatch-execute-callee'],
       ['type:SceneManager', 'type:RenderContext', 'type:std-string', 'type:shared-template', 'type:shared-render', 'type:shared-scene',
         'type:scene-pointer', 'type:render-pointer', 'type:const-char', 'type:level-name', 'typeuse:active-context', 'typeuse:active-context-element',
         'typeuse:owner-manager', 'typeuse:owner-manager-element', 'typeuse:make-context-argument', 'typeuse:manager-variable',
-        'binding:decl:active-context', 'binding:decl:owner-manager', 'binding:decl:manager-variable', 'binding:call:manager-get',
-        'binding:call:make-context', 'binding:receiver-dispatch'],
+        'decl:active-context', 'decl:owner-manager', 'decl:manager-variable', 'call:manager-get',
+        'call:make-context', 'symbol:dispatch'],
       ['resolution:call:update-dispatch', 'resolution:reference:update-dispatch-callee', 'resolution:call:dispatch-execute',
         'resolution:call:finalize-update', 'resolution:call:main-set-context', 'resolution:call:make-context', 'resolution:call:manager-get'],
       ['implementation:update-dispatch', 'implementation:dispatch-execute', 'implementation:execute-finalize', 'implementation:finalize-update',
         'evidence:cpp-contracts', 'evidence:conditional-dispatch', 'evidence:conditional-finalize',
         'coverage:references', 'coverage:calls', 'diagnostic:dependency-cycle', 'diagnostic:projection',
-        ...conditionalCalls.flatMap(record => [record.scope_id, record.condition_expression_id])]
+        ...conditionalCalls.flatMap(record => [record.declaration_id, record.condition_expression_id])]
     ],
     excerpts: [
       [excerpt('Headers are source observations; their contents are outside this projection.', { start: 0, end: locate('namespace Engine').start }),
@@ -564,11 +587,11 @@ int main() {
     conditionalCalls,
     notes: [
       'The complete supplied source is preserved. Only example.cpp is exported as a source version; missing SDK files are not fabricated. Include and using directives remain visible as Import records.',
-      'RenderContext’s forward declaration and definition share one symbol. Both dispatch_render_pass occurrences likewise share one callable symbol; the out-of-class declaration site is scope:Engine, while its semantic owner remains SceneManager.',
+      'RenderContext’s forward declaration and definition share one symbol. Both dispatch_render_pass occurrences likewise share one callable symbol; the out-of-class definition has decl:Engine as its syntactic parent, while its semantic owner remains SceneManager.',
       'The outer factory’s second argument is call:manager-get, not a flattened manager expression. Explicit receivers live in member-access operands; CallProfile alone stores the callee and source arguments.',
       'shared_ptr<RenderContext> is a generic application; SceneManager* is a pointer layer over a nominal class type. Supplied public C++17 type contracts support auto and get() result types, independently of SDK overload resolution.',
       'Known non-virtual project calls have complete relevant local candidate scopes. Standard-library calls remain unsupported with unknown candidate scope and no selected target; type contracts do not invent resolved factory or move signatures.',
-      'References, resolutions, and type bindings support derived component dependencies. Source if blocks retain their relationships without execution claims. ImplementationSet is optional source-definition knowledge; the model requires no control/data-flow or runtime-state records.'
+      'References, resolutions, and direct HAS_TYPE edges support derived component dependencies. Source if blocks retain their relationships without execution claims. ImplementationSet is optional source-definition knowledge; the model requires no control/data-flow or runtime-state records.'
     ]
   };
 })();

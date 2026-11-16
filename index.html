@@ -37,11 +37,12 @@
           <button class="layer-button active" data-layer="all"><span>All structures</span><span id="all-count" class="count"></span></button>
           <div id="layer-list"></div>
           <div class="sidebar-note"><span class="note-icon">↗</span><strong>Syntax ≠ semantics</strong><p>A preserved call does not guarantee a selected target. Supported possible candidates remain dependencies; a known definition does not predict execution.</p><button id="start-tour" class="text-button">See how it fits together →</button></div>
-          <div class="legend"><div class="eyebrow">READING THE MAP</div><p><span class="legend-solid"></span> Reference / embedded value</p><p><span class="legend-dashed"></span> Shared-identity extension</p><p><span class="legend-dot"></span> Selected structure</p><small>Arrows point from the record to the structure it references. Select a card to reveal its connections.</small></div>
+          <div class="legend"><div class="eyebrow">READING THE MAP</div><p><span class="legend-solid"></span> Typed relationship</p><p><span class="legend-dashed"></span> Embedded / shared identity</p><p><span class="legend-dot"></span> Selected structure</p><small>One node per schema type. Connections are possible, not mandatory for every record. Evidence and completeness can apply across the model.</small></div>
         </aside>
         <div class="map-area">
-          <div class="map-toolbar"><div><h2>Structure map</h2><span id="map-summary">Every layer, one connected model</span></div><label class="search"><span aria-hidden="true">⌕</span><input id="search" type="search" placeholder="Find a structure or attribute…" aria-label="Search structures, attributes, and explanations"><kbd>/</kbd></label></div>
+          <div class="map-toolbar"><div><h2>Structure map</h2><span id="map-summary">Repository → Project → source &amp; analysis structure</span></div><label class="search"><span aria-hidden="true">⌕</span><input id="search" type="search" placeholder="Find a structure or attribute…" aria-label="Search structures, attributes, and explanations"><kbd>/</kbd></label></div>
           <div class="map-options">
+            <div class="map-modes" role="group" aria-label="Visible relationships"><button data-map-mode="structure" class="active" aria-pressed="true">Structure</button><button data-map-mode="all" aria-pressed="false">All links</button></div>
             <label><input id="neighbors-only" type="checkbox"> Focus on connections</label>
             <button id="reset-map" class="text-button">Reset view ↺</button>
             <div class="map-controls" aria-label="Map viewport controls">
@@ -54,8 +55,8 @@
             <span id="visible-count"></span>
           </div>
           <div id="relation-info" class="relation-info" aria-live="polite"></div>
-          <div class="graph-scroll" tabindex="0" aria-label="Scrollable structure map">
-            <div id="graph-stage" class="graph-stage"><div id="graph" class="graph"><svg id="connections" role="group" aria-label="Labeled references for the selected structure"></svg><div id="graph-groups"></div></div></div>
+          <div class="graph-scroll" tabindex="0" aria-label="Scrollable model relationship graph">
+            <div id="graph-stage" class="graph-stage"><div id="graph" class="graph"><svg id="connections" role="group" aria-label="Labeled schema relationships"></svg><div id="graph-groups" aria-label="Model structure types"></div></div></div>
             <div id="empty-state" hidden>No matching structures. Try a name such as “Symbol” or an attribute such as “context_id”.</div>
           </div>
           <div class="map-footer"><span><span class="status-dot"></span> Source-backed documentation</span><span>Click a structure · follow a reference · explore a layer</span></div>
