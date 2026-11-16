@@ -28,11 +28,21 @@ component styles and graph edges reference semantic tokens.
   Overview mode uses compact, balanced columns so structure names and connections
   remain readable; full descriptions stay in the attributes below the map.
   Click relationship badges or edge labels to see their fields and explanations.
-- **Guided walkthrough:** explore the supplied C++ `Engine` example, with
-  `SceneManager`, `RenderContext`, and `main`. Focused excerpts link forward
-  declarations, out-of-class definitions, nested and member calls, smart-pointer
-  types, resolutions, and structural dependencies to record cards or JSON.
-  Expand the **Full source** disclosure to read the complete code, or choose
+- **Guided walkthrough:** explore the `Engine` example, a mixed-style program in
+  two source files: an object-oriented module with `SceneManager`,
+  `RenderContext`, and an entry function, and a functional `pipeline` module
+  with top-level functions, a higher-order `run_pipeline`, a closure factory,
+  a wrapper (a decorator in Python), and lambdas. `RenderContext` passes a
+  callback lambda to the pipeline, so the functional module reaches back into
+  OOP code only through a possible callback target. Use the **Example**
+  switcher in the header to choose C++, TypeScript, JavaScript, C#, Java,
+  Python, or Rust; the choice is remembered in `localStorage`. Each language
+  ports the same program and models it with its own idioms: Java uses a class
+  of static methods and functional interfaces, C# a static class and delegates,
+  and C++ an included header with `std::function`. Focused excerpts link
+  declarations, nested and member calls, language-specific types,
+  resolutions, and structural dependencies to record cards or JSON.
+  Expand the **Full source** disclosures to read each complete file, or choose
   **Full example** to inspect all illustrated records. Click a record ID or
   member-reference row to follow its references. **Components** aggregates
   supporting occurrences; **Member references** shows declaration-level call
@@ -52,9 +62,10 @@ component styles and graph edges reference semantic tokens.
   §9, with exact endpoint categories, plain-language explanations, source
   fragments, JSON record shapes, and common misinterpretations. Open it from
   the header or the SemanticRelation structure; `index.html#semantics` opens it
-  directly. The `imports_from` example links to the actual C++ walkthrough
-  record. Other fragments are independent illustrations, not invented facts
-  about the supplied C++ program. Kind names, endpoints, and kind-specific
+  directly. The `imports_from` example links to the actual walkthrough
+  record when the selected language has a project import. Other fragments are
+  independent illustrations, not invented facts
+  about the example program. Kind names, endpoints, and kind-specific
   information are read from the active specification.
 
 Use `/` to focus search and `Escape` to clear it. The graph's arrows indicate
@@ -63,18 +74,28 @@ extensions. The walkthrough's sequence is conceptual, not a set of literal edges
 Generic subject/supporting references are explained in the Connections panel,
 rather than drawn as an all-to-all graph.
 
-The walkthrough result in `example-model.js` is hand-authored teaching data, not
-an analyzer's output or a conformance-certified dataset. Source spans and FNV-1a
-fingerprints are computed from its displayed code. Profiles share their base
+The walkthrough results are hand-authored teaching data, not
+an analyzer's output or a conformance-certified dataset. `example-model.js` holds
+the C++ example. `example-builder.js` builds the other six from the compact
+descriptors in `example-languages.js`; add a language by adding a descriptor
+with its source files and fragment texts. JavaScript has no declared types, so its
+untyped-field calls stay partial, supported by the values written to the fields.
+Calls through callable values (parameters, loop variables, delegates) are
+indirect and partial: their candidates are the lambdas and functions whose
+values reach them, each with evidence citing the argument, return, collection,
+or decorator records. Source spans and FNV-1a
+fingerprints are computed from each displayed file. Profiles share their base
 entity IDs; step views are projections whose references resolve in the full
 example. Evidence and coverage explicitly state the example's assumptions and
-limited analysis boundaries. Public C++17 standard-library type contracts are
+limited analysis boundaries. Library type contracts, such as the public C++17
+standard-library ones, are
 supplied manually; SDK overload sets and stream insertion chains are not claimed.
 The original string literals are preserved; Markdown escapes on identifiers and
-pointer asterisks were removed before establishing the immutable teaching input.
+pointer asterisks were removed before establishing the immutable C++ teaching input.
 
-**The C++ program is never executed.** The reciprocal component and member
-references form a structural dependency cycle. Relationships inside source `if`
+**The example program is never executed.** The reciprocal component and member
+references form a structural dependency cycle, and the pipeline's possible
+callback target forms another. Relationships inside source `if`
 blocks remain visible without asserting branch execution, feasibility, or
 termination. A `PresenceCondition` concerns source/configuration applicability,
 not a runtime branch. Aggregated contexts need not apply simultaneously.

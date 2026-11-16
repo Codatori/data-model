@@ -344,9 +344,9 @@ Spelling is obtained from the span, and scope from `site_id`. Multiple names in 
 
 A target condition does not establish applicability, candidate completeness, or a unique selection. Supported conditional alternatives remain candidates even when the configuration value is unknown. A predicate alone MUST NOT be used to promote an ambiguous or partial result to `resolved`; the existing selection requirements still apply. If the selected target has a recorded candidate condition, derived selected-target relationships retain it.
 
-Resolution MUST preserve all targets identified as applicable or potentially applicable from the available source and semantic evidence, even when no single target can be selected. Unknown candidates require supporting evidence; a matching name alone does not establish a possible dependency. This does not guarantee discovery of every runtime target: missing types, dependencies, reflection, and dynamic dispatch may leave the candidate set partial or unknown.
+Resolution MUST preserve all targets identified as applicable or potentially applicable from the available source and semantic evidence, even when no single target can be selected. Unknown candidates require supporting evidence; a matching name alone does not establish a possible dependency. For an indirect call through a parameter, variable, field, or collection element, supported candidates are callables whose values reach the callee through source-visible arguments, assignments, returns, collection elements, or decorator applications; their evidence cites those records without requiring data-flow records. A callable that can also be reached from callers outside the assessed source keeps a partial candidate set even when one candidate is found. This does not guarantee discovery of every runtime target: missing types, dependencies, reflection, and dynamic dispatch may leave the candidate set partial or unknown.
 
-`ArgumentBinding`: `parameter_id` !, `argument_positions` ! (zero-based indices into the original `arguments`), `default_expression_id` ?, and `conversions` !. An empty position list MAY represent a default; multiple positions MAY bind to a variadic parameter. An unknown spread expansion is not replaced with a known element list.
+`ArgumentBinding`: `parameter_id` !, `argument_positions` ! (zero-based indices into the original `arguments`), `default_expression_id` ?, and `conversions` !. An empty position list MAY represent a default or the implicit operand of a decorator application; multiple positions MAY bind to a variadic parameter. An unknown spread expansion is not replaced with a known element list.
 
 `Conversion`: `kind` !, `source_type_id` ?, `target_type_id` ?, and `state` ! (`established`, `candidate`, `unknown`). Example kinds include `identity`, `numeric_promotion`, `reference_binding`, `boxing`, `user_defined`, and `language_specific`. Applicability under language rules MUST have supporting evidence.
 
@@ -390,6 +390,10 @@ An alias name is stored in the local `Symbol`; `imported_name` denotes the origi
 | `arguments` ! | Ordered list of `Argument` | Values and labels of named annotation arguments. |
 
 An annotation's type or name is represented by its associated `TypeUse` and reference. An executable decorator is additionally represented by an expression or call when required by language semantics; an annotation alone does not establish an invocation.
+
+An executable decorator application is a call `Expression` whose span is the Annotation span, with `CallProfile.call_kind: language_specific`. The decorator expression is its callee; for a parameterized decorator such as `@d(x)`, the nested call `d(x)` is that callee. The decorated definition is an implicit operand identified by `Annotation.declaration_id`: it is not added to `arguments`, and its `ArgumentBinding` has an empty `argument_positions` list. Stacked decorators are applied in language order, each to the result of the inner application.
+
+A decorator does not create a second symbol. The definition keeps its Symbol and Declaration, and name lookup still resolves references to that symbol. The value bound to the name is the decorator result, which MAY be recorded as an inferred `TypeBinding` on the decorated Declaration. A call through the decorated name is an `indirect` invocation of that result: the original definition is a candidate only with evidence that the result is or invokes it, and other supported results, such as returned wrappers, remain candidates. A language-defined decorator with a known contract, such as a property accessor or static method marker, MAY instead be represented by modifiers, profiles, and relations such as `accessor_for` without an application call. A decorator that registers the definition with an API establishes `registers_callback` only under that API contract.
 
 ### SemanticRelation
 
@@ -513,7 +517,8 @@ Required attributes: `severity` (`info`, `warning`, `error`), `code`, and `messa
 | Type reference, generic, alias | TypeUse, Reference, Type, TypeBinding, semantic relations. |
 | Inheritance, interface implementation, override | Established or candidate SemanticRelation. |
 | Import, include, alias, reexport | Import, local symbols, references, resolved import relations. |
-| Annotation, attribute, decorator | Annotation, TypeUse or reference, arguments, executable expression when required. |
+| Higher-order function, callback, returned closure | Callable symbols for functions and lambdas, argument and return expressions, capture relations, indirect call Resolution with evidence-backed candidates. |
+| Annotation, attribute, decorator | Annotation, TypeUse or reference, arguments; for executable decorators, an application call with an implicit operand and indirect resolution of calls through the decorated name. |
 | Conditional or external source code, or pre-existing generated source files | Context, PresenceCondition, origin, Coverage. |
 | Indirect, polymorphic, or dynamic targets | Available Resolution candidates, inheritance and override relations, optional ImplementationSet, and explicit completeness assessments. |
 | Incomplete, erroneous, or dynamic code | Available syntax, partial or unknown results, and diagnostics without fabricated targets. |

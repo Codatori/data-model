@@ -101,6 +101,7 @@ body { background: var(--bg); }
   color: var(--ink);
   font: inherit;
 }
+.header-controls { display: flex; align-items: center; gap: 14px; flex-shrink: 0; }
 .theme-status { margin: 0; padding: 12px 36px; border-bottom: 1px solid var(--line); background: var(--surface-selected); color: var(--ink); font-size: 12px; line-height: 1.8; }
 .header { height: auto; min-height: 78px; flex-wrap: wrap; }
 input::placeholder { color: var(--muted); opacity: 1; }
@@ -113,10 +114,10 @@ input::placeholder { color: var(--muted); opacity: 1; }
 .edge-label text { fill: var(--ink); }
 .edge-label:hover rect, .edge-label:focus rect { fill: var(--surface-selected); stroke: var(--brand-accent); }
 
-@media (max-width: 1100px) {
+@media (max-width: 1400px) {
   .header { padding-top: 15px; padding-bottom: 15px; gap: 12px; }
   .header nav { order: 3; width: 100%; justify-content: center; }
-  .theme-picker { margin-left: auto; }
+  .header-controls { margin-left: auto; }
 }
 @media (max-width: 620px) {
   .header .brand-divider, .header .brand-subtitle, .theme-picker > span { display: none; }

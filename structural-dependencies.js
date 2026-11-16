@@ -24,11 +24,12 @@
         scope = get(scope.parent_scope_id);
       }
     }
+    // Types, modules, and namespaces are components; callables outside them are their own outermost callable.
     function component(id) {
       let record = get(id), callable, root = id;
       while (record) {
         root = record.id;
-        if (record.category !== 'Symbol' || record.kind === 'type') return record.id;
+        if (record.category !== 'Symbol' || ['type', 'module', 'namespace'].includes(record.kind)) return record.id;
         if (record.kind === 'callable') callable = record.id;
         record = record.owner_symbol_id ? get(record.owner_symbol_id) : null;
       }
@@ -36,10 +37,12 @@
     }
     function name(id) {
       const parts = [];
+      let root;
       for (let record = get(id); record; record = record.owner_symbol_id ? get(record.owner_symbol_id) : null) {
-        parts.unshift(record.name || record.id);
+        parts.unshift(record.name || (record.kind === 'callable' ? '<lambda>' : record.uri ? record.uri.split('/').pop() : record.id));
+        root = record;
       }
-      if (parts[0] === 'Engine' && parts.length > 1) parts.shift();
+      if (parts.length > 1 && ['namespace', 'module'].includes(root.kind)) parts.shift();
       return parts.join('::');
     }
     function typeTargets(id, visited = new Set()) {
