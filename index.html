@@ -5,13 +5,17 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#F3F0E8">
   <title>codatori. / Code Graph model explorer</title>
-  <link rel="stylesheet" href="styles.css">
-  <link rel="stylesheet" href="themes.css">
-  <script src="theme.js"></script>
-  <script src="model-data.js" defer></script>
-  <script src="example-model.js" defer></script>
-  <script src="structural-dependencies.js" defer></script>
-  <script src="app.js" defer></script>
+  <link rel="stylesheet" href="styles.css?v=8">
+  <link rel="stylesheet" href="themes.css?v=8">
+  <script src="theme.js?v=8"></script>
+  <script src="model-data.js?v=8" defer></script>
+  <script src="example-model.js?v=8" defer></script>
+  <script src="example-builder.js?v=8" defer></script>
+  <script src="example-languages.js?v=8" defer></script>
+  <script src="structural-dependencies.js?v=8" defer></script>
+  <script src="app.js?v=8" defer></script>
+  <script src="vendor/d3.min.js?v=8" defer></script>
+  <script src="example-graph.js?v=8" defer></script>
 </head>
 <body>
   <header class="header">
@@ -21,8 +25,10 @@
       <button class="nav-button" data-view="walkthrough" aria-pressed="false">Guided walkthrough</button>
       <button class="nav-button" data-view="semantics" aria-pressed="false">Semantic relations</button>
       <button class="nav-button" data-view="specification" aria-pressed="false">Full specification</button>
+      <button class="nav-button" data-view="example" aria-pressed="false">Example graph</button>
     </nav>
-    <label class="theme-picker" for="theme-picker"><span>Theme</span><select id="theme-picker" aria-label="Color theme"><option value="zen-graph">Zen Graph · light</option><option value="midnight-satori">Midnight Satori · dark</option></select></label>
+    <div class="header-controls"><label class="theme-picker" for="language-picker"><span>Example</span><select id="language-picker" aria-label="Example language"></select></label>
+    <label class="theme-picker" for="theme-picker"><span>Theme</span><select id="theme-picker" aria-label="Color theme"><option value="zen-graph">Zen Graph · light</option><option value="midnight-satori">Midnight Satori · dark</option></select></label></div>
   </header>
   <p id="theme-status" class="theme-status" role="status" hidden></p>
   <main>
@@ -62,11 +68,34 @@
         </div>
         <aside id="details" class="details" aria-label="Selected structure details" tabindex="-1"></aside>
       </div>
-      <div class="dependency-overview"><div class="eyebrow">DERIVED VIEW, NOT AN ENTITY</div><h2>Structural dependency graph</h2><p>Derive component relationships from references, resolutions, imports, type bindings, and semantic relations. Keep selected targets and supported possible candidates; exclude inapplicable candidates. Optional ImplementationSet records identify source definitions, not runtime behavior.</p><p>Conditional source relationships remain visible without proving execution. Aggregated occurrences keep their contexts and uncertainty; they need not apply simultaneously. Source transformation, execution tracing, and branch-sensitive value tracking are outside the model.</p><button class="text-button" data-section="10">Read structural dependency rules →</button><button class="text-button" id="show-dependencies">See the C++ dependency example →</button></div>
+      <div class="dependency-overview"><div class="eyebrow">DERIVED VIEW, NOT AN ENTITY</div><h2>Structural dependency graph</h2><p>Derive component relationships from references, resolutions, imports, type bindings, and semantic relations. Keep selected targets and supported possible candidates; exclude inapplicable candidates. Optional ImplementationSet records identify source definitions, not runtime behavior.</p><p>Conditional source relationships remain visible without proving execution. Aggregated occurrences keep their contexts and uncertainty; they need not apply simultaneously. Source transformation, execution tracing, and branch-sensitive value tracking are outside the model.</p><button class="text-button" data-section="10">Read structural dependency rules →</button><button class="text-button" id="show-dependencies">See the dependency example →</button></div>
       <div class="principle-strip"><span class="eyebrow">THE CENTRAL IDEA</span><p><strong>Preserve what was written.</strong> Record what was concluded. Make uncertainty explicit.</p><button class="text-button" id="read-principles">Read the principles →</button></div>
     </section>
     <section id="walkthrough-view" class="view" hidden>
-      <div class="tour-layout"><aside><div class="eyebrow">FOLLOW THE C++ DEPENDENCIES</div><h2>From spelling<br>to structure.</h2><p>Engine’s SceneManager and RenderContext, an illustrative model result, and six steps connecting the two. Inspect focused source excerpts, record cards, JSON, and derived component relationships. Execution is not assessed.</p><ol id="tour-steps"></ol></aside><div id="tour-content" class="tour-content"></div></div>
+      <div class="tour-layout"><aside><div class="eyebrow">FOLLOW THE DEPENDENCIES</div><h2>From spelling<br>to structure.</h2><p>Engine’s SceneManager and RenderContext, an illustrative model result, and six steps connecting the two. Inspect focused source excerpts, record cards, JSON, and derived component relationships. Execution is not assessed.</p><ol id="tour-steps"></ol></aside><div id="tour-content" class="tour-content"></div></div>
+    </section>
+    <section id="example-view" class="view" hidden aria-labelledby="eg-title">
+      <div class="eg-layout">
+        <div class="eg-main">
+          <div class="eg-toolbar"><div><div id="eg-eyebrow" class="eyebrow">EVERY RECORD AND REFERENCE</div><h2 id="eg-title">Example graph</h2></div><div class="eg-switch" role="group" aria-label="Graph view"><button class="eg-switch-button active" data-eg-graph="code" aria-pressed="true">Code graph</button><button class="eg-switch-button" data-eg-graph="semantic" aria-pressed="false">Semantic graph</button></div><button id="eg-reset" class="text-button">Reset view ↺</button></div>
+          <div id="eg-canvas" class="eg-canvas"><div id="eg-tip" class="eg-tip" hidden></div></div>
+          <div class="eg-bottom">
+            <div class="eg-sp">
+              <div class="eg-tabs" role="tablist" aria-label="Side panel">
+                <button class="eg-tab active" role="tab" id="eg-tab-element" data-eg-tab="element" aria-selected="true" aria-controls="eg-panel">Active element</button>
+                <button class="eg-tab" role="tab" id="eg-tab-source" data-eg-tab="source" aria-selected="false" aria-controls="eg-source">Source code</button>
+              </div>
+              <div id="eg-panel" class="eg-panel" role="tabpanel" aria-labelledby="eg-tab-element" aria-live="polite"></div>
+              <div id="eg-source" class="eg-panel eg-source" role="tabpanel" aria-labelledby="eg-tab-source" hidden></div>
+            </div>
+            <div class="eg-filters" aria-label="Filters">
+              <label class="eg-search"><span aria-hidden="true">⌕</span><input id="eg-search" type="search" placeholder="Search by name or id…" aria-label="Fuzzy search records by name or id" autocomplete="off"><small id="eg-search-count"></small></label>
+              <section><div class="eg-filter-head"><strong>Records</strong><button class="text-button" data-eg-set="categories" data-eg-mode="all">Select all</button><button class="text-button" data-eg-set="categories" data-eg-mode="none">Deselect all</button></div><div id="eg-legend" class="eg-legend" aria-label="Filter record categories"></div></section>
+              <section><div class="eg-filter-head"><strong>Relations</strong><button class="text-button" data-eg-set="types" data-eg-mode="all">Select all</button><button class="text-button" data-eg-set="types" data-eg-mode="none">Deselect all</button><small>Context, unit, and file links start hidden</small></div><div id="eg-relations" class="eg-legend" aria-label="Filter relation types"></div></section>
+            </div>
+          </div>
+        </div>
+      </div>
     </section>
     <section id="specification-view" class="view" hidden>
       <div class="spec-layout"><aside><div class="eyebrow">THE SOURCE OF TRUTH</div><h2>Full specification</h2><p>All descriptions, attributes, rules, and conformance requirements from the Code Graph Data Model.</p><nav id="spec-toc" aria-label="Specification sections"></nav></aside><article id="spec-content" class="prose"></article></div>
