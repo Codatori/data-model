@@ -149,7 +149,37 @@ main{max-width:1800px;margin:auto;padding:0 36px}.intro{display:flex;justify-con
 .map-modes { display: inline-flex; gap: 2px; padding: 2px; background: var(--surface-muted); border: 1px solid var(--line); border-radius: 5px; }
 .map-modes button { border: 0; padding: 5px 8px; font-size: 10px; background: transparent; border-radius: 3px; color: var(--muted); }
 .map-modes button.active { background: var(--surface-selected); color: var(--ink); }
-.graph-scroll { max-height: 850px; }
+.graph-scroll {
+  height: min(72dvh, 780px);
+  min-height: 360px;
+  max-height: 850px;
+  flex: 1 1 auto;
+  overflow: hidden;
+  touch-action: none;
+  cursor: grab;
+  user-select: none;
+  overscroll-behavior: contain;
+}
+.graph-stage { position: absolute; inset: 0; margin: 0; }
+.schema-node .node { cursor: grab; transition: border-color .15s, background-color .15s; }
+.schema-node .node:active { cursor: grabbing; }
+.schema-node:focus-within { z-index: 3; }
+.schema-edge { pointer-events: stroke; cursor: pointer; }
+.schema-edge:hover { stroke: var(--brand-accent); opacity: 1; }
+.map-control { min-width: 32px; height: 32px; font-size: 16px; padding: 3px 7px; }
+.relationship-filter { min-width: 0; max-width: 100%; }
+.relationship-filter select {
+  width: 210px;
+  max-width: 100%;
+  min-width: 0;
+  padding: 7px;
+  border: 1px solid var(--control-border);
+  border-radius: 4px;
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+}
+#empty-state { position: absolute; inset: 40% 24px auto; text-align: center; pointer-events: none; }
 .map-area.fitted .graph-scroll, .workspace.expanded .graph-scroll { max-height: none; }
 .example-code { overflow: auto; font-size: 12px; }
 .example-code code { font: inherit; }

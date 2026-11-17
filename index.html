@@ -28,7 +28,7 @@
   <main>
     <section class="intro">
       <div><div class="eyebrow"><span class="status-dot"></span><span id="brand-tagline">CLARITY FROM COMPLEXITY</span></div><h1>Understand the code.<br><span>Connect the model.</span></h1><p>Preserved source, symbols, and structural dependencies.<br>Keep established and possible relationships distinct — without predicting execution.</p></div>
-      <div class="intro-facts"><div><strong id="entity-count">—</strong><span>model structures</span></div><div><strong>2</strong><span>conformance levels</span></div><div><strong>16</strong><span>integrity invariants</span></div></div>
+      <div class="intro-facts"><div><strong id="entity-count">—</strong><span>model structures</span></div><div><strong>2</strong><span>model layers</span></div><div><strong>20</strong><span>Code Facts invariants</span></div></div>
     </section>
     <section id="explorer-view" class="view">
       <div class="workspace">
@@ -44,20 +44,23 @@
           <div class="map-options">
             <div class="map-modes" role="group" aria-label="Visible relationships"><button data-map-mode="structure" class="active" aria-pressed="true">Structure</button><button data-map-mode="all" aria-pressed="false">All links</button></div>
             <label><input id="neighbors-only" type="checkbox"> Focus on connections</label>
-            <button id="reset-map" class="text-button">Reset view ↺</button>
+            <label class="relationship-filter"><select id="relationship-filter" aria-label="Filter by relationship type"><option value="all">All relationship types</option></select></label>
+            <label><input id="edge-labels" type="checkbox" checked> Edge labels</label>
             <div class="map-controls" aria-label="Map viewport controls">
-              <button id="zoom-out" class="map-control" aria-label="Zoom out">−</button>
+              <button id="zoom-out" class="map-control" aria-label="Zoom out" title="Zoom out">−</button>
               <output id="zoom-level" aria-live="polite">100%</output>
-              <button id="zoom-in" class="map-control" aria-label="Zoom in">+</button>
-              <button id="fit-map" class="map-control">Fit all</button>
-              <button id="expand-map" class="map-control" aria-pressed="false">Expand map ↗</button>
+              <button id="zoom-in" class="map-control" aria-label="Zoom in" title="Zoom in">+</button>
+              <button id="fit-map" class="map-control" aria-label="Fit all" title="Fit all">⊞</button>
+              <button id="center-node" class="map-control" aria-label="Center selected structure" title="Center selected structure">◎</button>
+              <button id="reset-map" class="map-control" aria-label="Reset view and node positions" title="Reset view and node positions">↺</button>
+              <button id="expand-map" class="map-control" aria-label="Expand map" title="Expand map" aria-pressed="false">↗</button>
             </div>
             <span id="visible-count"></span>
           </div>
           <div id="relation-info" class="relation-info" aria-live="polite"></div>
-          <div class="graph-scroll" tabindex="0" aria-label="Scrollable model relationship graph">
+          <div class="graph-scroll" tabindex="0" aria-label="Interactive model relationship graph" aria-description="Drag nodes to rearrange. Drag the background to pan. Scroll or pinch to zoom. Arrow keys move the focused node or pan the graph; plus and minus zoom; Home fits all structures.">
             <div id="graph-stage" class="graph-stage"><div id="graph" class="graph"><svg id="connections" role="group" aria-label="Labeled schema relationships"></svg><div id="graph-groups" aria-label="Model structure types"></div></div></div>
-            <div id="empty-state" hidden>No matching structures. Try a name such as “Symbol” or an attribute such as “context_id”.</div>
+            <div id="empty-state" hidden>No matching structures. Try a name such as “Symbol” or an attribute such as “project_id”.</div>
           </div>
           <div class="map-footer"><span><span class="status-dot"></span> Source-backed documentation</span><span>Click a structure · follow a reference · explore a layer</span></div>
         </div>

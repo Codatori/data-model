@@ -74,18 +74,13 @@ int main() {
 }
 `;
   const encode = text => new TextEncoder().encode(text);
-  const fingerprint = text => {
-    let hash = 0x811c9dc5;
-    for (const byte of encode(text)) hash = Math.imul(hash ^ byte, 0x01000193) >>> 0;
-    return hash.toString(16).padStart(8, '0');
-  };
   const locate = (text, from = 0) => {
     const start = code.indexOf(text, from);
     if (start < 0) throw new Error(`C++ teaching source fragment not found: ${text}`);
     return { start, end: start + text.length };
   };
   const sourceSpan = range => ({
-    file_id: 'file:example', start_offset: encode(code.slice(0, range.start)).length,
+    file_id: 'inventory:example', start_offset: encode(code.slice(0, range.start)).length,
     end_offset: encode(code.slice(0, range.end)).length
   });
   function within(text, range) {
@@ -116,30 +111,43 @@ int main() {
     dispatch: body('inline void SceneManager::dispatch_render_pass()'),
     main: body('int main()')
   };
-  const contextId = 'context:cpp17';
+  const projectId = 'project:example';
   const model = Object.fromEntries([
-    'CodeDataset', 'Repository', 'Project', 'Directory', 'ProjectFile',
-    'SourceFile', 'AnalysisContext', 'AnalysisUnit',
+    'Repository', 'Project', 'Directory', 'ProjectFile',
     'Symbol', 'Declaration', 'TypeProfile', 'CallableProfile', 'ParameterProfile',
-    'Import', 'Expression', 'CallProfile', 'Reference', 'TypeExpression', 'TypeUse',
-    'Resolution', 'ImplementationSet', 'Evidence', 'Coverage', 'Diagnostic'
+    'Import', 'Expression', 'TypeExpression', 'TypeUse', 'Coverage', 'Diagnostic'
   ].map(category => [category, []]));
-  const add = (category, record) => { model[category].push(record); return record; };
-  const contextual = record => ({ ...record, context_id: contextId });
-  const coverage = (id, subject, dimension, state, reasons = [], excluded = []) =>
-    add('Coverage', contextual({ id, subject_id: subject, dimension, state, reason_codes: reasons, excluded_spans: excluded }));
-  const evidence = (id, subject, supporting, detail, spans = [], method = 'manual') =>
-    add('Evidence', { id, subject_id: subject, method, source_spans: spans, supporting_ids: supporting, authority: 'established', detail });
+  const symbolProfiles = new Set(['CallableProfile', 'ParameterProfile', 'TypeProfile']);
+  const add = (category, record) => {
+    if (symbolProfiles.has(category)) record = { ...record, symbol_id: record.id, id: `profile:${category}:${record.id}` };
+    model[category].push(record);
+    return record;
+  };
+  const contextual = record => ({ ...record, project_id: projectId });
+  const coverage = (id, subject, dimension, state, reasons = [], excluded = [], attributePath) => {
+    const record = { id, subject_id: subject, dimension, state, reason_codes: reasons, excluded_spans: excluded,
+      ...(attributePath ? { attribute_path: attributePath } : {}) };
+    return add('Coverage', ['projects', 'files', 'project_dependencies', 'external_libraries'].includes(dimension) ? record : contextual(record));
+  };
+  const evidence = (key, subject, supporting, detail, spans = [], method = 'manual') => {
+    const source = Object.values(model).flat().find(record => record.id === subject);
+    source.evidence ??= [];
+    const entry = { key, method, source_spans: spans, supports: supporting.map(subject_id => ({ subject_id })),
+      authority: 'established', detail,
+      ...(['repository:example', 'project:example'].includes(subject) ? { project_independent: true } : { project_id: projectId }) };
+    source.evidence.push(entry);
+    return entry;
+  };
   function symbol(id, name, kind, owner, origin = 'source') {
     return add('Symbol', { id, name, kind, ...(owner ? { owner_symbol_id: owner } : {}), origin, identity_state: 'established' });
   }
   function containment(declarationId) {
-    return { unit_id: 'unit:example', ...(declarationId ? { declaration_id: declarationId } : {}) };
+    return { file_id: 'inventory:example', ...(declarationId ? { declaration_id: declarationId } : {}) };
   }
   const bodySpan = range => sourceSpan({ start: code.indexOf('{', range.start), end: range.end - Number(code[range.end - 1] === ';') });
   function declaration(id, symbolId, parentDeclarationId, range, options = {}) {
     const name = model.Symbol.find(record => record.id === symbolId).name;
-    return add('Declaration', { id, symbol_id: symbolId, unit_id: 'unit:example',
+    return add('Declaration', { id, symbol_id: symbolId, file_id: 'inventory:example',
       ...(parentDeclarationId ? { parent_declaration_id: parentDeclarationId } : {}), form: 'definition',
       span: sourceSpan(range), name_span: sourceSpan(within(name, range)), modifiers: [], ...options });
   }
@@ -150,27 +158,30 @@ int main() {
     source.has_type ??= [];
     source.has_type.push(contextual({ target_id: type, role, state: 'established' }));
   }
-  function resolved(id, subject, target, extra = {}) {
-    const result = add('Resolution', contextual({
-      id, subject_id: subject, state: 'resolved', selected_target_id: target,
-      candidates: [{ target_symbol_id: target, applicability: 'applicable', reason_codes: [], conversions: [] }],
-      candidate_set_completeness: 'complete', argument_bindings: [], type_substitutions: {}, reason_codes: [], ...extra
-    }));
-    coverage(`coverage:${id}`, subject, 'candidate_scope', 'complete');
-    return result;
+  function recordBinding(source, siteKey, target, field, extra = {}) {
+    source.binding_results ??= [];
+    const index = source.binding_results.length;
+    source.binding_results.push(contextual({ site_key: siteKey, state: target ? 'resolved' : 'unsupported',
+      candidate_set_completeness: target ? 'complete' : 'unknown', reason_codes: target ? [] : ['standard_library_binding_not_analyzed'] }));
+    if (!target) return;
+    source[field] ??= [];
+    const edge = contextual({ site_key: siteKey, target_id: target, state: 'selected', applicability: 'applicable', reason_codes: [], ...extra });
+    source[field].push(edge);
+    coverage(`coverage:${source.id}:${siteKey}`, source.id, field === 'invokes' ? 'calls' : 'references', 'complete', [], [], `binding_results[${index}]`);
+    return edge;
   }
   function reference(id, site, range, role, target, qualification = 'unqualified') {
-    add('Reference', { id, site_id: site, span: sourceSpan(range), role, qualification });
+    const source = Object.values(model).flat().find(record => record.id === site);
+    source.name_uses ??= [];
+    const key = `name:${source.name_uses.length}`;
+    source.name_uses.push({ key, start_offset: range.start, end_offset: range.end, role, qualification });
+    recordBinding(source, key, target, 'refers_to');
     if (target) {
-      resolved(`resolution:${id}`, id, target);
-      evidence(`evidence:${id}`, `resolution:${id}`, [site, target, 'evidence:cpp-contracts'],
+      const support = evidence(id, site, [target, 'inventory:descriptor'],
         { rule: 'Unique visible project binding in the displayed C++ scopes under the stated source and library assumptions.' },
         [sourceSpan(range)], 'language_rules');
-    } else add('Resolution', contextual({
-      id: `resolution:${id}`, subject_id: id, state: 'unsupported', candidates: [],
-      candidate_set_completeness: 'unknown', argument_bindings: [], type_substitutions: {},
-      reason_codes: ['standard_library_lookup_not_analyzed']
-    }));
+      support.attribute_path = `refers_to[${source.refers_to.length - 1}]`;
+    }
   }
   const declaredTypes = new Map();
   function typedDeclaration(id, symbolId, parentDeclarationId, range, type, options = {}) {
@@ -180,8 +191,8 @@ int main() {
     delete record.inferred;
     return record;
   }
-  function typeUse(id, subject, range, form, role, type, position) {
-    add('TypeUse', { id, subject_id: subject, span: sourceSpan(range), form, role,
+  function typeUse(id, subject, range, role, type, position) {
+    add('TypeUse', { id, subject_id: subject, span: sourceSpan(range), role,
       ...(position !== undefined ? { position } : {}) });
     if (type) bind(id, type);
     return id;
@@ -210,8 +221,8 @@ int main() {
         kind: 'member_access', operator: options.receiver.operator,
         operands: [{ role: 'base', expression_id: receiver }] });
     } else add('Expression', { id: calleeId, ...containment(declarationId), span: sourceSpan(calleeRange), kind: 'name', operands: [] });
-    add('Expression', { id: callId, ...containment(declarationId), span: sourceSpan(callRange), kind: 'call', operands: [] });
-    add('CallProfile', { id: callId, call_kind: 'ordinary', callee_expression_id: calleeId,
+    const invocation = add('Expression', { id: callId, ...containment(declarationId), span: sourceSpan(callRange), kind: 'call', operands: [],
+      call_kind: 'ordinary', callee_expression_id: calleeId,
       arguments: (options.args || []).map(expressionId => ({ expression_id: expressionId, expansion: 'none' })) });
     const templateStart = code.indexOf('<', calleeRange.start);
     const nameRange = options.name ? within(options.name, calleeRange)
@@ -223,7 +234,7 @@ int main() {
     if (options.target) {
       const receiverType = options.receiver ? declaredTypes.get(options.receiver.symbol) : null;
       const pointerType = receiverType === 'type:shared-render' ? 'type:render-pointer' : receiverType === 'type:shared-scene' ? 'type:scene-pointer' : null;
-      resolved(`resolution:${callId}`, callId, options.target, {
+      recordBinding(invocation, 'call', options.target, 'invokes', {
         dispatch_kind: 'direct', ...(receiver ? { receiver_binding: {
           expression_id: receiver, conversions: pointerType ? [
             { kind: 'language_specific', source_type_id: receiverType, target_type_id: pointerType, state: 'established' }
@@ -231,43 +242,41 @@ int main() {
         } } : {}),
         argument_bindings: options.parameter ? [{ parameter_id: options.parameter, argument_positions: [0], conversions: [] }] : []
       });
-      add('ImplementationSet', { id: `implementation:${key}`, resolution_id: `resolution:${callId}`,
-        definition_ids: [methodDefinitions.get(options.target)], completeness: 'complete' });
-      evidence(`evidence:${key}`, `resolution:${callId}`, [options.target, 'evidence:cpp-contracts'],
+      invocation.possible_implementation = [contextual({ site_key: 'call', target_id: methodDefinitions.get(options.target), target_position: 0 })];
+      invocation.binding_results.find(result => result.site_key === 'call').implementation_completeness = 'complete';
+      const support = evidence(key, callId, [options.target, 'inventory:descriptor'],
         { boundary: 'Unique non-virtual project member in the displayed source; standard shared_ptr receiver behavior is a supplied teaching contract.' },
         [sourceSpan(callRange)]);
-    } else add('Resolution', contextual({
-      id: `resolution:${callId}`, subject_id: callId, state: 'unsupported', candidates: [],
-      candidate_set_completeness: 'unknown', argument_bindings: [], type_substitutions: {},
-      reason_codes: ['standard_library_overloads_not_analyzed']
-    }));
+      support.attribute_path = 'invokes[0]';
+    } else recordBinding(invocation, 'call', null, 'invokes');
     return callId;
   }
 
   const descriptor = 'cmake_minimum_required(VERSION 3.16)\nproject(EngineExample LANGUAGES CXX)\nadd_executable(engine_example example.cpp)\ntarget_compile_features(engine_example PRIVATE cxx_std_17)\n';
-  const settings = { project_id: 'project:example', language_settings: { language: 'cpp', standard: 'c++17' },
-    defines: {}, search_paths: [], dependency_context_ids: [] };
-  add('CodeDataset', { id: 'dataset:example-v2', schema_version: 'v2', digest_algorithm: 'fnv1a32',
-    producer: 'codatori. / hand-authored C++ teaching projection', root_project_ids: ['project:example'] });
-  add('Repository', { id: 'repository:example', uri: 'memory:///', name: 'Illustrative Engine workspace' });
-  add('Directory', { id: 'directory:example', uri: 'memory:///' });
-  add('ProjectFile', { id: 'inventory:descriptor', uri: 'memory:///CMakeLists.txt',
-    parent_directory_id: 'directory:example', kind: 'descriptor', content_digest: fingerprint(descriptor) });
-  add('ProjectFile', { id: 'inventory:example', uri: 'memory:///example.cpp',
-    parent_directory_id: 'directory:example', kind: 'source', content_digest: fingerprint(code) });
-  add('Project', { id: 'project:example', repository_id: 'repository:example',
-    descriptor_file_id: 'inventory:descriptor', root_directory_id: 'directory:example',
-    name: 'EngineExample', build_system: 'cmake', kind: 'executable',
-    contains: ['directory:example', 'inventory:descriptor', 'inventory:example'].map(target => ({
-      target_id: target, state: 'established', membership: target === 'inventory:example' ? 'both' : 'physical'
-    })), external: [], depends_on: [] });
-  evidence('evidence:example-project', 'project:example', ['inventory:descriptor', 'inventory:example'],
-    { descriptor_content: descriptor, boundary: 'Hand-authored teaching descriptor added to organize the supplied C++ source. It is not a discovered repository file; no build or dependency resolution was run.' });
-  add('SourceFile', { id: 'file:example', uri: 'memory:///example.cpp', content: code,
-    content_digest: fingerprint(code), language: 'cpp', origin: 'source', project_file_id: 'inventory:example' });
-  add('AnalysisContext', { id: contextId, ...settings, context_digest: fingerprint(JSON.stringify(settings)) });
-  add('AnalysisUnit', { id: 'unit:example', context_id: contextId,
-    entry_file_ids: ['file:example'], participating_file_ids: ['file:example'] });
+  const settings = { language_settings: { language: 'cpp', standard: 'c++17' }, defines: {}, search_paths: [] };
+  add('Repository', { id: 'repository:example', uri: 'memory:///', name: 'Illustrative Engine workspace',
+    revision: '0123456789abcdef0123456789abcdef01234567' });
+  add('Directory', { id: 'directory:example', uri: 'memory:///', name: '/' });
+  add('ProjectFile', { id: 'inventory:descriptor', uri: 'memory:///CMakeLists.txt', name: 'CMakeLists.txt', kind: 'descriptor',
+    origin: 'source', content_ref: 'teaching://engine/0123456789abcdef0123456789abcdef01234567/CMakeLists.txt' });
+  add('ProjectFile', { id: 'inventory:example', uri: 'memory:///example.cpp', name: 'example.cpp', kind: 'source',
+    origin: 'source', language: 'cpp', content_ref: 'teaching://engine/0123456789abcdef0123456789abcdef01234567/example.cpp' });
+  add('Project', { id: projectId, name: 'EngineExample', language: 'cpp', build_system: 'cmake', kind: 'executable', ...settings });
+  const relationships = [
+    { source_id: 'repository:example', type: 'HAS_PROJECT', target_id: 'project:example', state: 'established' },
+    ...['directory:example', 'inventory:descriptor', 'inventory:example'].map(target => ({
+      source_id: 'project:example', type: 'CONTAINS', target_id: target, state: 'established',
+      membership: target === 'inventory:example' ? 'both' : 'physical',
+      ...(target === 'inventory:descriptor' ? { is_descriptor: true } : {}),
+      ...(target === 'directory:example' ? { is_root: true } : {})
+    })),
+    ...['inventory:descriptor', 'inventory:example'].map(target => ({
+      source_id: 'directory:example', type: 'CONTAINS', target_id: target, state: 'established'
+    }))
+  ];
+  evidence('example-project', 'project:example', ['inventory:descriptor', 'inventory:example'],
+    { descriptor_ref: 'teaching://engine/0123456789abcdef0123456789abcdef01234567/CMakeLists.txt',
+      boundary: 'Hand-authored teaching descriptor added to organize the supplied C++ source. It is not a discovered repository file; no build or dependency resolution was run.' });
   symbol('symbol:Engine', 'Engine', 'namespace');
   symbol('symbol:SceneManager', 'SceneManager', 'type', 'symbol:Engine');
   symbol('symbol:RenderContext', 'RenderContext', 'type', 'symbol:Engine');
@@ -335,7 +344,7 @@ int main() {
       type_parameter_ids: [], receiver_mode: owner ? 'instance' : 'none', variadic_style: 'none', receiver_qualifiers: [] });
     methodDefinitions.set(`symbol:${key}`, `decl:${key}`);
     if (kind !== 'constructor') bind(`decl:${key}`, key === 'main' ? 'type:int' : 'type:void', 'return');
-    if (owner) bind(`symbol:${key}`, `type:${owner}`, 'receiver');
+    if (owner) bind(`decl:${key}`, `type:${owner}`, 'receiver');
   }
   declaration('decl:dispatch-forward', 'symbol:dispatch', 'decl:SceneManager', within('void dispatch_render_pass();', ranges.scene), {
     form: 'declaration', visibility: 'public'
@@ -351,50 +360,54 @@ int main() {
     symbol(`symbol:${key}`, name, 'parameter', `symbol:${owner}`);
     typedDeclaration(`decl:${key}`, `symbol:${key}`, `decl:${owner}`, within(text, range), type);
     add('ParameterProfile', { id: `symbol:${key}`, binding_kind: 'positional', passing_mode: 'value' });
-    model.CallableProfile.find(profile => profile.id === `symbol:${owner}`).parameter_ids.push(`symbol:${key}`);
+    model.CallableProfile.find(profile => profile.symbol_id === `symbol:${owner}`).parameter_ids.push(`symbol:${key}`);
   }
 
   for (const header of ['iostream', 'memory', 'string']) {
     const range = locate(`#include <${header}>`);
     add('Import', { id: `import:${header}`, ...containment(null), span: sourceSpan(range),
-      kind: 'include', path_segments: [header], bindings: [] });
-    reference(`reference:include-${header}`, `import:${header}`, within(header, range), 'import', null);
+      form: 'include', is_reexport: false, source_form: 'angle_header', path_segments: [header], bindings: [],
+      binding_results: [contextual({ site_key: 'source', state: 'unsupported', candidate_set_completeness: 'unknown',
+        reason_codes: ['header_contents_not_analyzed'] })] });
+    coverage(`coverage:include-${header}`, `import:${header}`, 'imports', 'unknown', ['header_contents_not_analyzed'], [], 'binding_results[0]');
   }
   add('Import', { id: 'import:Engine', ...containment('decl:main'), span: sourceSpan(within('using namespace Engine;', ranges.main)),
-    kind: 'using', path_segments: ['Engine'], bindings: [{ wildcard: true }],
-    imports_from: [contextual({ target_id: 'symbol:Engine', state: 'established' })] });
+    form: 'using', is_reexport: false, source_form: 'qualified_name', path_segments: ['Engine'], bindings: [{ key: 'namespace', wildcard: true }],
+    binding_results: [contextual({ site_key: 'source', state: 'resolved', candidate_set_completeness: 'complete', reason_codes: [] })],
+    imports_from: [contextual({ target_id: 'symbol:Engine', site_key: 'source', state: 'established' })] });
   reference('reference:using-Engine', 'import:Engine', within('Engine', within('using namespace Engine;', ranges.main)), 'import', 'symbol:Engine');
-  evidence('evidence:using-Engine', 'import:Engine', ['symbol:Engine', contextId],
+  coverage('coverage:using-Engine-source', 'import:Engine', 'imports', 'complete', [], [], 'binding_results[0]');
+  evidence('using-Engine', 'import:Engine', ['symbol:Engine', 'inventory:descriptor'],
     { rule: 'The using directive names the Engine namespace in this analysis context.' },
     [sourceSpan(within('using namespace Engine;', ranges.main))], 'language_rules').attribute_path = 'imports_from[0]';
 
-  function declaredTypeUse(key, text, type, form, role = 'declared', child) {
+  function declaredTypeUse(key, text, type, role = 'declared', child) {
     const decl = model.Declaration.find(record => record.id === `decl:${key}`);
     const range = { start: decl.span.start_offset, end: decl.span.end_offset };
-    const id = typeUse(`typeuse:${key}`, decl.id, within(text, range), form, role, type);
+    const id = typeUse(`typeuse:${key}`, decl.id, within(text, range), role, type);
     if (child) {
       typeUse(`typeuse:${key}-element`, id, within(child.name, within(text, range)),
-        'named', child.role, child.type, 0);
+        child.role, child.type, 0);
       reference(`reference:type-${key}-element`, `typeuse:${key}-element`, within(child.name, within(text, range)), 'type', child.symbol);
     }
     return id;
   }
-  declaredTypeUse('scene-name', 'std::string', 'type:std-string', 'qualified');
-  declaredTypeUse('active-context', 'std::shared_ptr<RenderContext>', 'type:shared-render', 'generic', 'declared',
+  declaredTypeUse('scene-name', 'std::string', 'type:std-string');
+  declaredTypeUse('active-context', 'std::shared_ptr<RenderContext>', 'type:shared-render', 'declared',
     { name: 'RenderContext', role: 'argument', type: 'type:RenderContext', symbol: 'symbol:RenderContext' });
-  declaredTypeUse('frame-id', 'int', 'type:int', 'named');
-  declaredTypeUse('owner-manager', 'SceneManager*', 'type:scene-pointer', 'pointer', 'declared',
+  declaredTypeUse('frame-id', 'int', 'type:int');
+  declaredTypeUse('owner-manager', 'SceneManager*', 'type:scene-pointer', 'declared',
     { name: 'SceneManager', role: 'declared', type: 'type:SceneManager', symbol: 'symbol:SceneManager' });
-  declaredTypeUse('ctor-name', 'std::string', 'type:std-string', 'qualified');
-  declaredTypeUse('set-context-parameter', 'std::shared_ptr<RenderContext>', 'type:shared-render', 'generic', 'declared',
+  declaredTypeUse('ctor-name', 'std::string', 'type:std-string');
+  declaredTypeUse('set-context-parameter', 'std::shared_ptr<RenderContext>', 'type:shared-render', 'declared',
     { name: 'RenderContext', role: 'argument', type: 'type:RenderContext', symbol: 'symbol:RenderContext' });
-  declaredTypeUse('ctor-frame', 'int', 'type:int', 'named');
-  declaredTypeUse('ctor-manager', 'SceneManager*', 'type:scene-pointer', 'pointer', 'declared',
+  declaredTypeUse('ctor-frame', 'int', 'type:int');
+  declaredTypeUse('ctor-manager', 'SceneManager*', 'type:scene-pointer', 'declared',
     { name: 'SceneManager', role: 'declared', type: 'type:SceneManager', symbol: 'symbol:SceneManager' });
   for (const [key, , , rangeKey, kind] of methods) if (kind !== 'constructor') {
     const decl = model.Declaration.find(record => record.id === `decl:${key}`);
     typeUse(`typeuse:return-${key}`, decl.id, within(key === 'main' ? 'int' : 'void', ranges[rangeKey]),
-      'named', 'return', key === 'main' ? 'type:int' : 'type:void');
+      'return', key === 'main' ? 'type:int' : 'type:void');
   }
 
   const nameArgument = namedExpression('expression:ctor-name', 'decl:scene-ctor', within('name', within('std::move(name)', ranges.sceneCtor)), 'symbol:ctor-name');
@@ -436,7 +449,7 @@ int main() {
   model.Expression.find(record => record.id === frame).semantic_properties = [
     contextual({ name: 'value_category', value: 'prvalue', state: 'established' })
   ];
-  evidence('evidence:frame-value-category', frame, [contextId],
+  evidence('frame-value-category', frame, ['inventory:descriptor'],
     { rule: 'A C++17 integer literal is a prvalue; this adds no execution claim.' },
     [sourceSpan(within('42', ranges.main))], 'language_rules').attribute_path = 'semantic_properties[0]';
   const getManager = call('manager-get', 'decl:context-variable', 'manager.get()', ranges.main, {
@@ -468,13 +481,13 @@ int main() {
     ['make-context', 'RenderContext', 'type:RenderContext', 'symbol:RenderContext']
   ]) {
     const range = within(name, within(`std::make_shared<${name}>`, ranges.main));
-    typeUse(`typeuse:${key}-argument`, `call:${key}`, range, 'named', 'argument', type, 0);
+    typeUse(`typeuse:${key}-argument`, `call:${key}`, range, 'argument', type, 0);
     reference(`reference:${key}-type`, `typeuse:${key}-argument`, range, 'type', symbolId);
   }
   for (const [key, type] of [['manager-variable', 'type:shared-scene'], ['context-variable', 'type:shared-render']]) {
     const decl = model.Declaration.find(record => record.id === `decl:${key}`);
     typeUse(`typeuse:${key}`, decl.id, { start: decl.span.start_offset, end: decl.span.start_offset + 4 },
-      'language_specific', 'declared', null);
+      'declared', null);
     bind(`typeuse:${key}`, type, 'inferred');
   }
 
@@ -488,81 +501,90 @@ int main() {
       : 'if (owner_manager_) {\n                owner_manager_->update_scene();\n            }', range);
     const conditionRange = within(condition, statement);
     const conditionId = namedExpression(`condition:${key}`, `decl:${key}`, conditionRange, symbolId);
-    model.CallProfile.find(record => record.id === invocation).condition = {
+    const expression = model.Expression.find(record => record.id === invocation);
+    expression.condition = {
       predicate: { kind: 'expression', expression_id: conditionId }, completeness: 'complete'
     };
-    const conditionEvidence = evidence(`evidence:conditional-${key}`, invocation, [conditionId, `decl:${key}`],
+    const conditionEvidence = evidence(`conditional-${key}`, invocation, [conditionId, `decl:${key}`],
       { boundary: 'The call occurs inside this source if block. No branch outcome or path feasibility is asserted.' },
       [sourceSpan(statement)], 'syntax');
     conditionEvidence.authority = 'observed';
     conditionEvidence.attribute_path = 'condition';
-    coverage(`coverage:conditional-${key}`, invocation, 'condition', 'complete', []);
+    coverage(`coverage:conditional-${key}`, invocation, 'calls', 'complete', [], [], 'condition');
     conditionalCalls.push({ call_id: invocation, condition_expression_id: conditionId, declaration_id: `decl:${key}` });
   }
-  evidence('evidence:RenderContext-identity', 'symbol:RenderContext', ['decl:RenderContext-forward', 'decl:RenderContext', contextId],
+  evidence('RenderContext-identity', 'symbol:RenderContext', ['decl:RenderContext-forward', 'decl:RenderContext', 'inventory:descriptor'],
     { rule: 'The forward declaration and class definition denote the same Engine::RenderContext under C++ class declaration rules.' },
     [sourceSpan(locate('class RenderContext;')), sourceSpan(ranges.render)], 'language_rules');
-  evidence('evidence:dispatch-identity', 'symbol:dispatch', ['decl:dispatch-forward', 'decl:dispatch', contextId],
+  evidence('dispatch-identity', 'symbol:dispatch', ['decl:dispatch-forward', 'decl:dispatch', 'inventory:descriptor'],
     { rule: 'The out-of-class qualified definition matches the zero-parameter SceneManager member declaration, not a new namespace function.' },
     [sourceSpan(within('void dispatch_render_pass();', ranges.scene)), sourceSpan(ranges.dispatch)], 'language_rules');
-  evidence('evidence:cpp-contracts', contextId, ['unit:example'],
+  evidence('cpp-contracts', projectId, ['inventory:example'],
     { assumptions: [
       'Normal C++17 standard headers; no macros replace the displayed project declarations.',
       'Supplied public type contracts: string is the standard alias, shared_ptr<T> has one type parameter, make_shared<T> returns shared_ptr<T>, get/operator-> return T*, move produces an rvalue reference.',
       'These limited contracts support illustrated types and receiver lookup, not a complete SDK overload analysis or prediction of execution.'
     ] });
   const streamSpans = code.split('\n').filter(line => line.includes('std::cout')).map(line => sourceSpan(locate(line.trim())));
-  coverage('coverage:configuration', 'unit:example', 'configuration', 'partial', ['sdk_search_paths_not_exported']);
+  coverage('coverage:configuration', 'inventory:example', 'configuration', 'partial', ['sdk_search_paths_not_exported']);
   coverage('coverage:projects', 'repository:example', 'projects', 'complete');
   coverage('coverage:files', 'project:example', 'files', 'complete');
   coverage('coverage:project-dependencies', 'project:example', 'project_dependencies', 'unknown', ['build_not_evaluated']);
   coverage('coverage:external-libraries', 'project:example', 'external_libraries', 'unknown', ['library_resolution_not_performed']);
-  coverage('coverage:syntax', 'unit:example', 'syntax', 'partial', ['focused_teaching_projection'], streamSpans);
-  coverage('coverage:declarations', 'unit:example', 'declarations', 'partial', ['project_declarations_only']);
-  coverage('coverage:calls', 'unit:example', 'calls', 'partial', ['stream_operator_and_implicit_library_calls_omitted'], streamSpans);
-  coverage('coverage:types', 'unit:example', 'types', 'partial', ['standard_library_internal_types_not_exported']);
-  coverage('coverage:imports', 'unit:example', 'imports', 'partial', ['header_contents_not_analyzed']);
-  coverage('coverage:references', 'unit:example', 'references', 'partial', ['focused_project_references_only'], streamSpans);
-  for (const implementation of model.ImplementationSet) {
-    coverage(`coverage:${implementation.id}`, implementation.id, 'implementations', 'complete');
-    evidence(`evidence:${implementation.id}`, implementation.id, [implementation.resolution_id, ...implementation.definition_ids],
-      { boundary: 'One known non-virtual source definition within this assessed source. No linker or runtime target completeness is claimed.' });
+  coverage('coverage:syntax', 'inventory:example', 'syntax', 'partial', ['focused_teaching_projection'], streamSpans);
+  coverage('coverage:declarations', 'inventory:example', 'declarations', 'partial', ['project_declarations_only']);
+  coverage('coverage:calls', 'inventory:example', 'calls', 'partial', ['stream_operator_and_implicit_library_calls_omitted'], streamSpans);
+  coverage('coverage:types', 'inventory:example', 'types', 'partial', ['standard_library_internal_types_not_exported']);
+  coverage('coverage:imports', 'inventory:example', 'imports', 'partial', ['header_contents_not_analyzed']);
+  coverage('coverage:references', 'inventory:example', 'references', 'partial', ['focused_project_references_only'], streamSpans);
+  for (const expression of model.Expression.filter(record => record.possible_implementation)) {
+    coverage(`coverage:implementation:${expression.id}`, expression.id, 'implementations', 'complete', [], [], 'possible_implementation[0]');
+    evidence(`implementation:${expression.id}`, expression.id, expression.possible_implementation.map(edge => edge.target_id),
+      { boundary: 'One known non-virtual source definition within this assessed source. No linker or runtime target completeness is claimed.' }).attribute_path = 'possible_implementation[0]';
   }
-  add('Diagnostic', contextual({ id: 'diagnostic:projection', severity: 'info', code: 'ILLUSTRATIVE_COVERAGE',
-    subject_id: 'unit:example', message: 'This hand-authored projection omits stream insertion operators and SDK overload sets; execution analysis is outside scope. It is not an analyzer export.' }));
-  add('Diagnostic', contextual({ id: 'diagnostic:dependency-cycle', severity: 'info', code: 'STRUCTURAL_DEPENDENCY_CYCLE',
+  add('Diagnostic', contextual({ id: 'diagnostic:projection', severity: 'info', code: 'example.ILLUSTRATIVE_COVERAGE',
+    subject_id: 'inventory:example', message: 'This hand-authored projection omits stream insertion operators and SDK overload sets; execution analysis is outside scope. It is not an analyzer export.' }));
+  add('Diagnostic', contextual({ id: 'diagnostic:dependency-cycle', severity: 'info', code: 'example.STRUCTURAL_DEPENDENCY_CYCLE',
     subject_id: 'call:finalize-update', span: sourceSpan(within('owner_manager_->update_scene()', ranges.finalize)),
+    related_subjects: [{ subject_id: 'decl:finalize', role: 'caller' }, { subject_id: 'decl:update', role: 'target' }],
+    related_spans: [{ span: sourceSpan(ranges.update), message: 'The related method participates in the structural cycle.' }],
     message: 'The project member relationships contain a structural cycle. Cyclic dependencies are permitted; these records do not prove execution, branch outcomes, termination, or simultaneous applicability. The program is not executed.' }));
 
   const excerpt = (caption, range) => ({ caption, span: sourceSpan(range) });
   window.CODE_GRAPH_EXAMPLE = {
-    filename: 'example.cpp', code, model,
+    filename: 'example.cpp', code, model, relationships,
+    externalContent: {
+      'teaching://engine/0123456789abcdef0123456789abcdef01234567/example.cpp': code,
+      'teaching://engine/0123456789abcdef0123456789abcdef01234567/CMakeLists.txt': descriptor
+    },
     sourceNote: 'This teaching input was normalized from the supplied Markdown before analysis: escapes before underscores and pointer asterisks were removed. Analysis preserves this input unchanged, including the supplied C++ string literals. A separate hand-authored CMakeLists.txt teaching descriptor supplies the project boundary; it is not part of the original snippet, and no build was run.',
     steps: [
-      ['CodeDataset', 'Repository', 'Project', 'Directory', 'ProjectFile', 'SourceFile', 'AnalysisContext', 'AnalysisUnit', 'Import'],
+      ['Repository', 'Project', 'Directory', 'ProjectFile', 'Import'],
       ['Symbol', 'Declaration', 'TypeProfile', 'CallableProfile', 'ParameterProfile'],
-      ['Expression', 'CallProfile', 'Reference'],
+      ['Expression'],
       ['TypeExpression', 'TypeUse', 'Declaration', 'Expression', 'Symbol'],
-      ['Resolution'],
-      ['ImplementationSet', 'Evidence', 'Coverage', 'Diagnostic', 'Expression']
+      ['Expression', 'Import'],
+      ['Coverage', 'Diagnostic', 'Expression', 'Project']
     ],
     stepRecordIds: [
       null,
       ['symbol:Engine', 'symbol:SceneManager', 'symbol:RenderContext', 'symbol:dispatch', 'symbol:scene-ctor', 'symbol:ctor-name',
+        'profile:TypeProfile:symbol:SceneManager', 'profile:TypeProfile:symbol:RenderContext',
+        'profile:CallableProfile:symbol:dispatch', 'profile:CallableProfile:symbol:scene-ctor', 'profile:ParameterProfile:symbol:ctor-name',
         'decl:RenderContext-forward', 'decl:RenderContext', 'decl:dispatch-forward', 'decl:dispatch', 'decl:ctor-name',
         'decl:Engine', 'decl:SceneManager'],
       ['call:make-context', 'callee:make-context', 'call:manager-get', 'callee:manager-get', 'receiver:manager-get', 'expression:frame-number',
         'call:dispatch-execute', 'callee:dispatch-execute', 'receiver:dispatch-execute', 'call:update-dispatch', 'callee:update-dispatch',
-        'reference:make-context-callee', 'reference:manager-get-callee', 'reference:dispatch-execute-callee'],
+        'callee:main-update'],
       ['type:SceneManager', 'type:RenderContext', 'type:std-string', 'type:shared-template', 'type:shared-render', 'type:shared-scene',
         'type:scene-pointer', 'type:render-pointer', 'type:const-char', 'type:level-name', 'typeuse:active-context', 'typeuse:active-context-element',
         'typeuse:owner-manager', 'typeuse:owner-manager-element', 'typeuse:make-context-argument', 'typeuse:manager-variable',
         'decl:active-context', 'decl:owner-manager', 'decl:manager-variable', 'call:manager-get',
         'call:make-context', 'symbol:dispatch'],
-      ['resolution:call:update-dispatch', 'resolution:reference:update-dispatch-callee', 'resolution:call:dispatch-execute',
-        'resolution:call:finalize-update', 'resolution:call:main-set-context', 'resolution:call:make-context', 'resolution:call:manager-get'],
-      ['implementation:update-dispatch', 'implementation:dispatch-execute', 'implementation:execute-finalize', 'implementation:finalize-update',
-        'evidence:cpp-contracts', 'evidence:conditional-dispatch', 'evidence:conditional-finalize',
+      ['call:update-dispatch', 'callee:update-dispatch', 'call:dispatch-execute',
+        'call:finalize-update', 'call:main-set-context', 'call:make-context', 'call:manager-get'],
+      ['call:update-dispatch', 'call:dispatch-execute', 'call:execute-finalize', 'call:finalize-update',
+        projectId,
         'coverage:references', 'coverage:calls', 'diagnostic:dependency-cycle', 'diagnostic:projection',
         ...conditionalCalls.flatMap(record => [record.declaration_id, record.condition_expression_id])]
     ],
@@ -586,12 +608,12 @@ int main() {
     ],
     conditionalCalls,
     notes: [
-      'The complete supplied source is preserved. Only example.cpp is exported as a source version; missing SDK files are not fabricated. Include and using directives remain visible as Import records.',
+      'ProjectFile stores only a versioned external content reference. This offline example resolves teaching:// references from a separate demonstration store, outside the graph. Include and using directives remain visible as Import records. The repository commit hash is illustrative, not an observed Git revision.',
       'RenderContext’s forward declaration and definition share one symbol. Both dispatch_render_pass occurrences likewise share one callable symbol; the out-of-class definition has decl:Engine as its syntactic parent, while its semantic owner remains SceneManager.',
-      'The outer factory’s second argument is call:manager-get, not a flattened manager expression. Explicit receivers live in member-access operands; CallProfile alone stores the callee and source arguments.',
+      'The outer factory’s second argument is call:manager-get, not a flattened manager expression. Explicit receivers live in member-access operands; the call Expression stores its callee and source arguments.',
       'shared_ptr<RenderContext> is a generic application; SceneManager* is a pointer layer over a nominal class type. Supplied public C++17 type contracts support auto and get() result types, independently of SDK overload resolution.',
       'Known non-virtual project calls have complete relevant local candidate scopes. Standard-library calls remain unsupported with unknown candidate scope and no selected target; type contracts do not invent resolved factory or move signatures.',
-      'References, resolutions, and direct HAS_TYPE edges support derived component dependencies. Source if blocks retain their relationships without execution claims. ImplementationSet is optional source-definition knowledge; the model requires no control/data-flow or runtime-state records.'
+      'Direct INVOKES, REFERS_TO, POSSIBLE_IMPLEMENTATION and HAS_TYPE edges support derived component dependencies. Source if blocks retain their relationships without execution claims. No control/data-flow or runtime-state records are required.'
     ]
   };
 })();
