@@ -252,13 +252,20 @@ main{max-width:1800px;margin:auto;padding:0 36px}.intro{display:flex;justify-con
 .dependency-evidence li { margin: 10px 0; padding-top: 10px; border-top: 1px solid var(--line); line-height: 1.9; overflow-wrap: anywhere; }
 .dependency-evidence li div { margin-top: 5px; }
 .semantic-guide-link { display: block; margin-top: 12px; }
+.semantic-layout article > section { min-width: 0; scroll-margin-top: 24px; }
+.semantic-layout article > section + section { margin-top: 48px; padding-top: 32px; border-top: 2px solid var(--line); }
+.semantic-layout article h3[id] { scroll-margin-top: 24px; }
+.semantic-layout .semantic-endpoints { overflow-wrap: anywhere; }
+.semantic-layout .semantic-endpoints h4 { margin: 14px 0 8px; font-size: 13px; }
+.semantic-layout aside nav a { flex-shrink: 0; }
+.semantic-layout aside nav a:nth-child(3n + 1) { margin-top: 12px; color: var(--ink); font-weight: 600; }
 .semantic-rules { padding: 18px; margin: 20px 0; background: var(--surface-muted); border: 1px solid var(--line); border-radius: 8px; }
 .semantic-rules h3 { margin-top: 0; }
 .semantic-rules .text-button { margin-right: 18px; }
 .semantic-kind { margin: 16px 0; border: 1px solid var(--line); border-radius: 8px; scroll-margin-top: 20px; }
 .semantic-kind summary { cursor: pointer; padding: 16px; }
 .semantic-kind summary code { margin-right: 12px; font-size: 13px; }
-.semantic-kind summary span { color: var(--muted); font-size: 12px; }
+.semantic-kind summary span { margin-left: 8px; color: var(--muted); font-size: 12px; }
 .semantic-kind-body { padding: 0 18px 18px; }
 .semantic-endpoints { padding-top: 16px; border-top: 1px solid var(--line); }
 .semantic-examples { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
@@ -281,7 +288,7 @@ main{max-width:1800px;margin:auto;padding:0 36px}.intro{display:flex;justify-con
   .header nav .nav-button { flex: 1 1 45%; }
   .semantic-layout aside nav { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .semantic-layout aside nav a { overflow-wrap: anywhere; }
-  .semantic-kind summary span { display: block; margin-top: 6px; }
+  .semantic-kind summary span { display: block; margin: 6px 0 0; }
   .semantic-kind-body { padding: 0 12px 12px; }
   .workspace { display: block; }
   .map-area { height: auto; }

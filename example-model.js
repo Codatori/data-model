@@ -1,9 +1,12 @@
 (() => {
   'use strict';
 
-  const code = String.raw`#include <iostream>
+  const sceneCode = String.raw`#pragma once
+
+#include <iostream>
 #include <memory>
 #include <string>
+#include <utility>
 
 namespace Engine {
     class RenderContext;
@@ -25,9 +28,16 @@ namespace Engine {
             dispatch_render_pass();
         }
 
+        void update_scene(int frame_id);
         void dispatch_render_pass();
     };
+} // namespace Engine
+`;
+  const renderCode = String.raw`#pragma once
 
+#include "SceneManager.hpp"
+
+namespace Engine {
     class RenderContext {
     private:
         int frame_id_;
@@ -56,7 +66,23 @@ namespace Engine {
             active_context_->execute_pipeline();
         }
     }
+
+    inline void SceneManager::update_scene(int frame_id) {
+        std::cout << "[SceneManager] Requested frame #" << frame_id << "\\n";
+        dispatch_render_pass();
+    }
 } // namespace Engine
+`;
+  const viewerCode = String.raw`#include "RenderContext.hpp"
+
+class Application {
+public:
+    void render(Engine::SceneManager& manager, int frame_id);
+};
+
+void Application::render(Engine::SceneManager& manager, int frame_id) {
+    manager.update_scene(frame_id);
+}
 
 int main() {
     using namespace Engine;
@@ -67,12 +93,16 @@ int main() {
 
     manager->set_render_context(context);
 
+    Application application;
+    application.render(*manager, 42);
+
     std::cout << "--- Starting execution flow --- \\n";
     manager->update_scene();
 
     return 0;
 }
 `;
+  const code = sceneCode + renderCode + viewerCode;
   const encode = text => new TextEncoder().encode(text);
   const locate = (text, from = 0) => {
     const start = code.indexOf(text, from);
@@ -100,6 +130,7 @@ int main() {
   }
   const ranges = {
     engine: body('namespace Engine {'),
+    engineRender: body('namespace Engine {\n    class RenderContext {'),
     scene: body('class SceneManager {'),
     render: body('class RenderContext {'),
     sceneCtor: body('explicit SceneManager(std::string name)'),
@@ -109,7 +140,10 @@ int main() {
     execute: body('void execute_pipeline()'),
     finalize: body('void finalize_frame()'),
     dispatch: body('inline void SceneManager::dispatch_render_pass()'),
-    main: body('int main()')
+    main: body('int main()'),
+    updateFrame: body('inline void SceneManager::update_scene(int frame_id)'),
+    application: body('class Application {'),
+    applicationRender: body('void Application::render(Engine::SceneManager& manager, int frame_id)')
   };
   const projectId = 'project:example';
   const model = Object.fromEntries([
@@ -134,7 +168,7 @@ int main() {
     source.evidence ??= [];
     const entry = { key, method, source_spans: spans, supports: supporting.map(subject_id => ({ subject_id })),
       authority: 'established', detail,
-      ...(['repository:example', 'project:example'].includes(subject) ? { project_independent: true } : { project_id: projectId }) };
+      ...([...model.Repository, ...model.Project].some(record => record.id === subject) ? { project_independent: true } : { project_id: projectId }) };
     source.evidence.push(entry);
     return entry;
   };
@@ -240,7 +274,9 @@ int main() {
             { kind: 'language_specific', source_type_id: receiverType, target_type_id: pointerType, state: 'established' }
           ] : []
         } } : {}),
-        argument_bindings: options.parameter ? [{ parameter_id: options.parameter, argument_positions: [0], conversions: [] }] : []
+        argument_bindings: (options.parameters || (options.parameter ? [options.parameter] : [])).map((parameter, position) => ({
+          parameter_id: parameter, argument_positions: [position], conversions: []
+        }))
       });
       invocation.possible_implementation = [contextual({ site_key: 'call', target_id: methodDefinitions.get(options.target), target_position: 0 })];
       invocation.binding_results.find(result => result.site_key === 'call').implementation_completeness = 'complete';
@@ -252,38 +288,77 @@ int main() {
     return callId;
   }
 
-  const descriptor = 'cmake_minimum_required(VERSION 3.16)\nproject(EngineExample LANGUAGES CXX)\nadd_executable(engine_example example.cpp)\ntarget_compile_features(engine_example PRIVATE cxx_std_17)\n';
+  const descriptor = 'add_library(engine INTERFACE)\ntarget_include_directories(engine INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})\ntarget_compile_features(engine INTERFACE cxx_std_17)\ntarget_sources(engine INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/SceneManager.hpp ${CMAKE_CURRENT_SOURCE_DIR}/RenderContext.hpp)\n';
+  const viewerDescriptor = 'add_executable(viewer main.cpp)\ntarget_link_libraries(viewer PRIVATE engine)\n';
+  const rootDescriptor = 'cmake_minimum_required(VERSION 3.16)\nproject(EngineWorkspace LANGUAGES CXX)\nadd_subdirectory(engine)\nadd_subdirectory(viewer)\n';
+  const contentRef = path => `teaching://engine/0123456789abcdef0123456789abcdef01234567/${path}`;
+  const sources = [
+    { id: 'inventory:example', path: 'engine/SceneManager.hpp', content: sceneCode, project: projectId },
+    { id: 'inventory:render', path: 'engine/RenderContext.hpp', content: renderCode, project: projectId },
+    { id: 'inventory:viewer', path: 'viewer/main.cpp', content: viewerCode, project: 'project:viewer' }
+  ];
+  let sourceOffset = 0;
+  for (const source of sources) {
+    source.start = sourceOffset;
+    sourceOffset += encode(source.content).length;
+    source.end = sourceOffset;
+  }
   const settings = { language_settings: { language: 'cpp', standard: 'c++17' }, defines: {}, search_paths: [] };
-  add('Repository', { id: 'repository:example', uri: 'memory:///', name: 'Illustrative Engine workspace',
+  add('Repository', { id: 'repository:example', uri: 'memory:///', name: 'Engine workspace (illustrative Git snapshot)',
     revision: '0123456789abcdef0123456789abcdef01234567' });
-  add('Directory', { id: 'directory:example', uri: 'memory:///', name: '/' });
-  add('ProjectFile', { id: 'inventory:descriptor', uri: 'memory:///CMakeLists.txt', name: 'CMakeLists.txt', kind: 'descriptor',
-    origin: 'source', content_ref: 'teaching://engine/0123456789abcdef0123456789abcdef01234567/CMakeLists.txt' });
-  add('ProjectFile', { id: 'inventory:example', uri: 'memory:///example.cpp', name: 'example.cpp', kind: 'source',
-    origin: 'source', language: 'cpp', content_ref: 'teaching://engine/0123456789abcdef0123456789abcdef01234567/example.cpp' });
-  add('Project', { id: projectId, name: 'EngineExample', language: 'cpp', build_system: 'cmake', kind: 'executable', ...settings });
+  add('Directory', { id: 'directory:example', uri: 'memory:///engine/', name: 'engine' });
+  add('Directory', { id: 'directory:repository', uri: 'memory:///', name: 'engine-workspace' });
+  add('Directory', { id: 'directory:viewer', uri: 'memory:///viewer/', name: 'viewer' });
+  for (const [id, path] of [['inventory:descriptor', 'engine/CMakeLists.txt'],
+    ['inventory:viewer-descriptor', 'viewer/CMakeLists.txt'], ['inventory:root-descriptor', 'CMakeLists.txt']]) {
+    add('ProjectFile', { id, uri: `memory:///${path}`, name: 'CMakeLists.txt', kind: 'descriptor', origin: 'source', content_ref: contentRef(path) });
+  }
+  for (const source of sources) add('ProjectFile', { id: source.id, uri: `memory:///${source.path}`,
+    name: source.path.split('/').pop(), kind: 'source', origin: 'source', language: 'cpp', content_ref: contentRef(source.path) });
+  add('Project', { id: projectId, name: 'engine', language: 'cpp', build_system: 'cmake', kind: 'library', ...settings,
+    search_paths: [{ uri: 'memory:///engine/', kind: 'include' }] });
+  add('Project', { id: 'project:viewer', name: 'viewer', language: 'cpp', build_system: 'cmake', kind: 'executable', ...settings,
+    search_paths: [{ uri: 'memory:///engine/', kind: 'include' }] });
   const relationships = [
     { source_id: 'repository:example', type: 'HAS_PROJECT', target_id: 'project:example', state: 'established' },
-    ...['directory:example', 'inventory:descriptor', 'inventory:example'].map(target => ({
+    { source_id: 'repository:example', type: 'HAS_PROJECT', target_id: 'project:viewer', state: 'established' },
+    { source_id: 'project:viewer', type: 'DEPENDS_ON', target_id: projectId, state: 'established' },
+    ...['directory:example', 'inventory:descriptor', 'inventory:example', 'inventory:render'].map(target => ({
       source_id: 'project:example', type: 'CONTAINS', target_id: target, state: 'established',
-      membership: target === 'inventory:example' ? 'both' : 'physical',
+      membership: ['inventory:example', 'inventory:render'].includes(target) ? 'both' : 'physical',
       ...(target === 'inventory:descriptor' ? { is_descriptor: true } : {}),
       ...(target === 'directory:example' ? { is_root: true } : {})
     })),
-    ...['inventory:descriptor', 'inventory:example'].map(target => ({
+    ...['inventory:descriptor', 'inventory:example', 'inventory:render'].map(target => ({
       source_id: 'directory:example', type: 'CONTAINS', target_id: target, state: 'established'
-    }))
+    })),
+    ...['directory:viewer', 'inventory:viewer-descriptor', 'inventory:viewer'].map(target => ({
+      source_id: 'project:viewer', type: 'CONTAINS', target_id: target, state: 'established',
+      membership: target === 'inventory:viewer' ? 'both' : 'physical',
+      ...(target === 'directory:viewer' ? { is_root: true } : {}),
+      ...(target === 'inventory:viewer-descriptor' ? { is_descriptor: true } : {})
+    })),
+    ...['inventory:viewer-descriptor', 'inventory:viewer'].map(target => ({
+      source_id: 'directory:viewer', type: 'CONTAINS', target_id: target, state: 'established'
+    })),
+    ...['directory:example', 'directory:viewer'].map(target => ({
+      source_id: 'directory:repository', type: 'PARENT_OF', target_id: target, state: 'established'
+    })),
+    { source_id: 'directory:repository', type: 'CONTAINS', target_id: 'inventory:root-descriptor', state: 'established' }
   ];
   evidence('example-project', 'project:example', ['inventory:descriptor', 'inventory:example'],
-    { descriptor_ref: 'teaching://engine/0123456789abcdef0123456789abcdef01234567/CMakeLists.txt',
-      boundary: 'Hand-authored teaching descriptor added to organize the supplied C++ source. It is not a discovered repository file; no build or dependency resolution was run.' });
+    { descriptor_ref: contentRef('engine/CMakeLists.txt'),
+      boundary: 'Hand-authored CMake interface-library target with two public headers; no SDK dependency resolution or execution is claimed.' });
+  evidence('viewer-project', 'project:viewer', ['inventory:viewer-descriptor', 'inventory:root-descriptor'],
+    { descriptor_ref: contentRef('viewer/CMakeLists.txt'), boundary: 'target_link_libraries(viewer PRIVATE engine) establishes the explicit viewer -> engine build dependency.' });
   symbol('symbol:Engine', 'Engine', 'namespace');
   symbol('symbol:SceneManager', 'SceneManager', 'type', 'symbol:Engine');
   symbol('symbol:RenderContext', 'RenderContext', 'type', 'symbol:Engine');
   declaration('decl:Engine', 'symbol:Engine', null, ranges.engine, { body_span: bodySpan(ranges.engine) });
   declaration('decl:SceneManager', 'symbol:SceneManager', 'decl:Engine', ranges.scene, { body_span: bodySpan(ranges.scene) });
   declaration('decl:RenderContext-forward', 'symbol:RenderContext', 'decl:Engine', locate('class RenderContext;'), { form: 'forward_declaration' });
-  declaration('decl:RenderContext', 'symbol:RenderContext', 'decl:Engine', ranges.render, { body_span: bodySpan(ranges.render) });
+  declaration('decl:Engine-render', 'symbol:Engine', null, ranges.engineRender, { body_span: bodySpan(ranges.engineRender) });
+  declaration('decl:RenderContext', 'symbol:RenderContext', 'decl:Engine-render', ranges.render, { body_span: bodySpan(ranges.render) });
   for (const name of ['SceneManager', 'RenderContext']) add('TypeProfile', {
     id: `symbol:${name}`, type_kind: 'class', type_parameter_ids: []
   });
@@ -335,7 +410,7 @@ int main() {
   ];
   for (const [key, name, owner, rangeKey, kind] of methods) {
     symbol(`symbol:${key}`, name, 'callable', owner ? `symbol:${owner}` : null);
-    const parentDeclarationId = key === 'main' ? null : key === 'dispatch' ? 'decl:Engine' : `decl:${owner}`;
+    const parentDeclarationId = key === 'main' ? null : key === 'dispatch' ? 'decl:Engine-render' : `decl:${owner}`;
     declaration(`decl:${key}`, `symbol:${key}`, parentDeclarationId, ranges[rangeKey], {
       body_span: bodySpan(ranges[rangeKey]), modifiers: key === 'main' ? [] : key === 'scene-ctor' ? ['explicit', 'inline'] : ['inline'],
       ...(key !== 'main' ? { visibility: 'public' } : {})
@@ -363,7 +438,7 @@ int main() {
     model.CallableProfile.find(profile => profile.symbol_id === `symbol:${owner}`).parameter_ids.push(`symbol:${key}`);
   }
 
-  for (const header of ['iostream', 'memory', 'string']) {
+  for (const header of ['iostream', 'memory', 'string', 'utility']) {
     const range = locate(`#include <${header}>`);
     add('Import', { id: `import:${header}`, ...containment(null), span: sourceSpan(range),
       form: 'include', is_reexport: false, source_form: 'angle_header', path_segments: [header], bindings: [],
@@ -491,6 +566,91 @@ int main() {
     bind(`typeuse:${key}`, type, 'inferred');
   }
 
+  symbol('symbol:Application', 'Application', 'type');
+  add('TypeProfile', { id: 'symbol:Application', type_kind: 'class', type_parameter_ids: [] });
+  add('TypeExpression', { id: 'type:Application', kind: 'nominal', symbol_id: 'symbol:Application', qualifiers: [], completeness: 'complete' });
+  add('TypeExpression', { id: 'type:scene-reference', kind: 'reference', reference_kind: 'lvalue',
+    element_type_id: 'type:SceneManager', qualifiers: [], completeness: 'complete' });
+  declaration('decl:Application', 'symbol:Application', null, ranges.application, { body_span: bodySpan(ranges.application) });
+  for (const [key, name, owner, parent, range] of [
+    ['update-frame', 'update_scene', 'SceneManager', 'Engine-render', ranges.updateFrame],
+    ['application-render', 'render', 'Application', null, ranges.applicationRender]
+  ]) {
+    symbol(`symbol:${key}`, name, 'callable', `symbol:${owner}`);
+    declaration(`decl:${key}`, `symbol:${key}`, parent ? `decl:${parent}` : null, range,
+      { body_span: bodySpan(range), modifiers: key === 'update-frame' ? ['inline'] : [], visibility: 'public' });
+    declaration(`decl:${key}-forward`, `symbol:${key}`, `decl:${owner}`, key === 'update-frame'
+      ? within('void update_scene(int frame_id);', ranges.scene)
+      : within('void render(Engine::SceneManager& manager, int frame_id);', ranges.application),
+    { form: 'declaration', visibility: 'public' });
+    add('CallableProfile', { id: `symbol:${key}`, callable_kind: 'method', parameter_ids: [], type_parameter_ids: [],
+      receiver_mode: 'instance', variadic_style: 'none', receiver_qualifiers: [] });
+    methodDefinitions.set(`symbol:${key}`, `decl:${key}`);
+    bind(`decl:${key}`, 'type:void', 'return');
+    bind(`decl:${key}-forward`, 'type:void', 'return');
+    bind(`decl:${key}`, `type:${owner}`, 'receiver');
+    typeUse(`typeuse:return-${key}`, `decl:${key}`, within('void', range), 'return', 'type:void');
+    reference(`reference:${key}-owner`, `decl:${key}`, within(owner, range), 'type', `symbol:${owner}`);
+  }
+  for (const [key, name, owner, spelling, range, type] of [
+    ['update-frame-id', 'frame_id', 'update-frame', 'int frame_id', ranges.updateFrame, 'type:int'],
+    ['application-manager', 'manager', 'application-render', 'Engine::SceneManager& manager', ranges.applicationRender, 'type:scene-reference'],
+    ['application-frame', 'frame_id', 'application-render', 'int frame_id', ranges.applicationRender, 'type:int']
+  ]) {
+    symbol(`symbol:${key}`, name, 'parameter', `symbol:${owner}`);
+    typedDeclaration(`decl:${key}`, `symbol:${key}`, `decl:${owner}`, within(spelling, range), type);
+    add('ParameterProfile', { id: `symbol:${key}`, binding_kind: 'positional', passing_mode: key === 'application-manager' ? 'reference' : 'value' });
+    model.CallableProfile.find(profile => profile.symbol_id === `symbol:${owner}`).parameter_ids.push(`symbol:${key}`);
+    declaredTypeUse(key, spelling.slice(0, spelling.lastIndexOf(' ')), type);
+  }
+  reference('reference:application-manager-type', 'typeuse:application-manager',
+    within('SceneManager', within('Engine::SceneManager& manager', ranges.applicationRender)), 'type', 'symbol:SceneManager', 'qualified');
+  const frameArgument = namedExpression('expression:application-frame', 'decl:application-render',
+    within('frame_id', within('manager.update_scene(frame_id)', ranges.applicationRender)), 'symbol:application-frame');
+  call('application-update', 'decl:application-render', 'manager.update_scene(frame_id)', ranges.applicationRender, {
+    receiver: { name: 'manager', symbol: 'symbol:application-manager', operator: '.' },
+    name: 'update_scene', target: 'symbol:update-frame', args: [frameArgument], parameter: 'symbol:update-frame-id', type: 'type:void'
+  });
+  model.Expression.find(record => record.id === 'call:application-update').invokes.push(contextual({
+    site_key: 'call', target_id: 'symbol:update', state: 'rejected', applicability: 'inapplicable',
+    reason_codes: ['argument_count_mismatch'], dispatch_kind: 'direct', argument_bindings: []
+  }));
+  evidence('overload-selection', 'call:application-update', ['decl:update-frame-forward', 'decl:update'],
+    { rule: 'The int argument selects update_scene(int); update_scene() is rejected by arity. Overloading is not overriding.' },
+    [sourceSpan(within('manager.update_scene(frame_id)', ranges.applicationRender))], 'language_rules').attribute_path = 'invokes[0]';
+  call('update-frame-dispatch', 'decl:update-frame', 'dispatch_render_pass()', ranges.updateFrame, { target: 'symbol:dispatch', type: 'type:void' });
+  symbol('symbol:application-variable', 'application', 'variable', 'symbol:main');
+  typedDeclaration('decl:application-variable', 'symbol:application-variable', 'decl:main',
+    within('Application application;', ranges.main), 'type:Application');
+  declaredTypeUse('application-variable', 'Application', 'type:Application');
+  const applicationCall = within('application.render(*manager, 42)', ranges.main);
+  const managerArgument = namedExpression('expression:application-manager-base', 'decl:main',
+    within('manager', applicationCall), 'symbol:manager-variable');
+  add('Expression', { id: 'expression:application-manager', ...containment('decl:main'),
+    span: sourceSpan(within('*manager', applicationCall)), kind: 'unary', operator: '*',
+    operands: [{ role: 'operand', expression_id: managerArgument }] });
+  bind('expression:application-manager', 'type:SceneManager', 'inferred');
+  const applicationFrame = literal('expression:application-frame-literal', 'decl:main', '42', applicationCall, 'integer', 42, 'type:int');
+  call('main-application', 'decl:main', 'application.render(*manager, 42)', ranges.main, {
+    receiver: { name: 'application', symbol: 'symbol:application-variable', operator: '.' },
+    name: 'render', target: 'symbol:application-render', args: ['expression:application-manager', applicationFrame],
+    parameters: ['symbol:application-manager', 'symbol:application-frame'], type: 'type:void'
+  });
+  for (const [key, header, target] of [
+    ['scene-header', 'SceneManager.hpp', 'inventory:example'],
+    ['render-header', 'RenderContext.hpp', 'inventory:render']
+  ]) {
+    const directive = locate(`#include "${header}"`, key === 'scene-header' ? sceneCode.length : sceneCode.length + renderCode.length);
+    const record = add('Import', { id: `import:${key}`, ...containment(null), span: sourceSpan(directive),
+      form: 'include', source_form: 'quoted_header', path_segments: [header], bindings: [], is_reexport: false,
+      binding_results: [contextual({ site_key: 'source', state: 'resolved', candidate_set_completeness: 'complete', reason_codes: [] })],
+      imports_from: [contextual({ target_id: target, site_key: 'source', state: 'established' })] });
+    evidence(key, record.id, [target, 'inventory:descriptor'],
+      { rule: 'Quoted include resolves to the checked-in teaching header through the engine target include directory.' },
+      [sourceSpan(directive)], 'manual').attribute_path = 'imports_from[0]';
+    coverage(`coverage:${key}`, record.id, 'imports', 'complete', [], [], 'binding_results[0]');
+  }
+
   const conditionalCalls = [];
   for (const [key, condition, symbolId, range, invocation] of [
     ['dispatch', 'active_context_', 'symbol:active-context', ranges.dispatch, 'call:dispatch-execute'],
@@ -525,11 +685,13 @@ int main() {
       'Supplied public type contracts: string is the standard alias, shared_ptr<T> has one type parameter, make_shared<T> returns shared_ptr<T>, get/operator-> return T*, move produces an rvalue reference.',
       'These limited contracts support illustrated types and receiver lookup, not a complete SDK overload analysis or prediction of execution.'
     ] });
-  const streamSpans = code.split('\n').filter(line => line.includes('std::cout')).map(line => sourceSpan(locate(line.trim())));
+  const streamSpans = sceneCode.split('\n').filter(line => line.includes('std::cout')).map(line => sourceSpan(locate(line.trim())));
   coverage('coverage:configuration', 'inventory:example', 'configuration', 'partial', ['sdk_search_paths_not_exported']);
   coverage('coverage:projects', 'repository:example', 'projects', 'complete');
   coverage('coverage:files', 'project:example', 'files', 'complete');
-  coverage('coverage:project-dependencies', 'project:example', 'project_dependencies', 'unknown', ['build_not_evaluated']);
+  coverage('coverage:project-dependencies', 'project:example', 'project_dependencies', 'complete');
+  coverage('coverage:viewer-dependencies', 'project:viewer', 'project_dependencies', 'complete');
+  coverage('coverage:viewer-files', 'project:viewer', 'files', 'complete');
   coverage('coverage:external-libraries', 'project:example', 'external_libraries', 'unknown', ['library_resolution_not_performed']);
   coverage('coverage:syntax', 'inventory:example', 'syntax', 'partial', ['focused_teaching_projection'], streamSpans);
   coverage('coverage:declarations', 'inventory:example', 'declarations', 'partial', ['project_declarations_only']);
@@ -537,6 +699,18 @@ int main() {
   coverage('coverage:types', 'inventory:example', 'types', 'partial', ['standard_library_internal_types_not_exported']);
   coverage('coverage:imports', 'inventory:example', 'imports', 'partial', ['header_contents_not_analyzed']);
   coverage('coverage:references', 'inventory:example', 'references', 'partial', ['focused_project_references_only'], streamSpans);
+  coverage('coverage:viewer-external-libraries', 'project:viewer', 'external_libraries', 'unknown', ['library_resolution_not_performed']);
+  for (const source of sources.slice(1)) {
+    const excluded = source.content.split('\n').filter(line => line.includes('std::cout'))
+      .map(line => sourceSpan(locate(line.trim(), source.start)));
+    for (const [dimension, reason] of [
+      ['configuration', 'sdk_search_paths_not_exported'], ['syntax', 'focused_teaching_projection'],
+      ['declarations', 'project_declarations_only'], ['calls', 'stream_operator_and_implicit_library_calls_omitted'],
+      ['types', 'standard_library_internal_types_not_exported'], ['imports', 'transitive_sdk_headers_not_analyzed'],
+      ['references', 'focused_project_references_only']
+    ]) coverage(`coverage:${source.id}:${dimension}`, source.id, dimension, 'partial', [reason],
+      ['syntax', 'calls', 'references'].includes(dimension) ? excluded : []);
+  }
   for (const expression of model.Expression.filter(record => record.possible_implementation)) {
     coverage(`coverage:implementation:${expression.id}`, expression.id, 'implementations', 'complete', [], [], 'possible_implementation[0]');
     evidence(`implementation:${expression.id}`, expression.id, expression.possible_implementation.map(edge => edge.target_id),
@@ -552,12 +726,14 @@ int main() {
 
   const excerpt = (caption, range) => ({ caption, span: sourceSpan(range) });
   window.CODE_GRAPH_EXAMPLE = {
-    filename: 'example.cpp', code, model, relationships,
-    externalContent: {
-      'teaching://engine/0123456789abcdef0123456789abcdef01234567/example.cpp': code,
-      'teaching://engine/0123456789abcdef0123456789abcdef01234567/CMakeLists.txt': descriptor
-    },
-    sourceNote: 'This teaching input was normalized from the supplied Markdown before analysis: escapes before underscores and pointer asterisks were removed. Analysis preserves this input unchanged, including the supplied C++ string literals. A separate hand-authored CMakeLists.txt teaching descriptor supplies the project boundary; it is not part of the original snippet, and no build was run.',
+    filename: 'engine-workspace', code, model, relationships,
+    externalContent: Object.fromEntries([
+      ...sources.map(source => [contentRef(source.path), source.content]),
+      [contentRef('engine/CMakeLists.txt'), descriptor],
+      [contentRef('viewer/CMakeLists.txt'), viewerDescriptor],
+      [contentRef('CMakeLists.txt'), rootDescriptor]
+    ]),
+    sourceNote: 'Hand-authored C++17 workspace in examples/engine-workspace: viewer depends on the header-only engine library. The repository and commit represent an illustrative Git snapshot; no nested Git repository is required. This is a focused static projection, not analyzer output or an execution trace.',
     steps: [
       ['Repository', 'Project', 'Directory', 'ProjectFile', 'Import'],
       ['Symbol', 'Declaration', 'TypeProfile', 'CallableProfile', 'ParameterProfile'],
@@ -608,12 +784,64 @@ int main() {
     ],
     conditionalCalls,
     notes: [
-      'ProjectFile stores only a versioned external content reference. This offline example resolves teaching:// references from a separate demonstration store, outside the graph. Include and using directives remain visible as Import records. The repository commit hash is illustrative, not an observed Git revision.',
-      'RenderContext’s forward declaration and definition share one symbol. Both dispatch_render_pass occurrences likewise share one callable symbol; the out-of-class definition has decl:Engine as its syntactic parent, while its semantic owner remains SceneManager.',
+      'One illustrative repository, two descriptor-based projects, three C++ files. viewer DEPENDS_ON engine is a build fact, not an inferred execution path. ProjectFile stores only versioned external content references. The teaching commit hash is illustrative; the checked-in folder has no nested Git repository.',
+      'RenderContext, dispatch_render_pass and update_scene(int) retain identity across files. The reopened namespace shares one symbol but has separate file-local declarations. update_scene() is a distinct overload, not an override. Application::render has both a declaration and a qualified definition.',
       'The outer factory’s second argument is call:manager-get, not a flattened manager expression. Explicit receivers live in member-access operands; the call Expression stores its callee and source arguments.',
       'shared_ptr<RenderContext> is a generic application; SceneManager* is a pointer layer over a nominal class type. Supplied public C++17 type contracts support auto and get() result types, independently of SDK overload resolution.',
-      'Known non-virtual project calls have complete relevant local candidate scopes. Standard-library calls remain unsupported with unknown candidate scope and no selected target; type contracts do not invent resolved factory or move signatures.',
-      'Direct INVOKES, REFERS_TO, POSSIBLE_IMPLEMENTATION and HAS_TYPE edges support derived component dependencies. Source if blocks retain their relationships without execution claims. No control/data-flow or runtime-state records are required.'
+      'The cross-project call selects update_scene(int) and rejects update_scene() by arity. Its context remains viewer while its implementation is in engine/RenderContext.hpp. Standard-library calls remain unsupported; type contracts do not invent SDK overload selections.',
+      'Application -> SceneManager crosses project boundaries; SceneManager <-> RenderContext stays inside engine. Direct source relationships support derived dependencies independently of explicit build DEPENDS_ON. Source if blocks and cycles make no execution claims.'
     ]
   };
+  const extraStepRecords = [
+    [],
+    ['symbol:Application', 'profile:TypeProfile:symbol:Application', 'symbol:application-render', 'symbol:update', 'symbol:update-frame',
+      'decl:Application', 'decl:Engine-render', 'decl:application-render-forward', 'decl:application-render',
+      'decl:update', 'decl:update-frame-forward', 'decl:update-frame', 'decl:application-manager', 'decl:application-frame', 'decl:update-frame-id',
+      'profile:CallableProfile:symbol:update', 'profile:CallableProfile:symbol:update-frame',
+      'profile:CallableProfile:symbol:application-render', 'profile:ParameterProfile:symbol:application-manager',
+      'profile:ParameterProfile:symbol:application-frame', 'profile:ParameterProfile:symbol:update-frame-id'],
+    ['call:main-application', 'callee:main-application', 'expression:application-manager', 'expression:application-manager-base',
+      'expression:application-frame-literal', 'call:application-update', 'callee:application-update', 'expression:application-frame'],
+    ['type:Application', 'type:scene-reference', 'typeuse:application-manager', 'decl:application-manager', 'decl:application-variable'],
+    ['call:application-update', 'callee:application-update', 'call:main-application', 'call:update-frame-dispatch', 'import:render-header', 'import:scene-header'],
+    ['call:application-update', 'call:update-frame-dispatch', 'project:viewer']
+  ];
+  extraStepRecords.forEach((ids, step) => window.CODE_GRAPH_EXAMPLE.stepRecordIds[step]?.push(...ids));
+  const extraExcerpts = [
+    [],
+    [excerpt('The same overload is declared in one file and defined in another.', within('void update_scene(int frame_id);', ranges.scene)),
+      excerpt('Its qualified definition retains the SceneManager semantic owner.', ranges.updateFrame)],
+    [excerpt('Cross-project call with a reference parameter and an explicit int argument.', ranges.applicationRender)],
+    [excerpt('An lvalue reference adds a type layer; it does not transfer ownership.', within('Engine::SceneManager& manager', ranges.applicationRender))],
+    [excerpt('The int argument selects update_scene(int), not update_scene().', within('manager.update_scene(frame_id);', ranges.applicationRender))],
+    [excerpt('Application depends on an engine member across the project boundary.', ranges.applicationRender)]
+  ];
+  extraExcerpts.forEach((items, step) => window.CODE_GRAPH_EXAMPLE.excerpts[step].push(...items));
+  function localize(value, source) {
+    if (Array.isArray(value)) return value.map(child => localize(child, source));
+    if (!value || typeof value !== 'object') return value;
+    const span = value.span || (value.file_id && 'start_offset' in value ? value : null);
+    if (span) source = sources.find(item => span.start_offset >= item.start && span.start_offset < item.end);
+    const result = Object.fromEntries(Object.entries(value).map(([key, child]) => [key, localize(child, source)]));
+    if (source && 'start_offset' in value) {
+      if (value.end_offset > source.end) throw new Error('Teaching source range crosses a file boundary');
+      result.start_offset -= source.start;
+      result.end_offset -= source.start;
+    }
+    if (source && value.file_id) result.file_id = source.id;
+    if (source?.project === 'project:viewer') {
+      if (value.project_id === projectId) result.project_id = source.project;
+      if (value.subject_id === 'inventory:descriptor') result.subject_id = 'inventory:viewer-descriptor';
+    }
+    return result;
+  }
+  for (const [category, records] of Object.entries(model)) model[category] = records.map(record => localize(record));
+  window.CODE_GRAPH_EXAMPLE.excerpts = localize(window.CODE_GRAPH_EXAMPLE.excerpts);
+  const records = new Map(Object.values(model).flat().map(record => [record.id, record]));
+  for (const assessment of [...model.Coverage, ...model.Diagnostic]) {
+    const subject = records.get(assessment.subject_id);
+    const file = subject?.file_id || subject?.span?.file_id || subject?.id;
+    const source = sources.find(item => item.id === file);
+    if (assessment.project_id && source) assessment.project_id = source.project;
+  }
 })();

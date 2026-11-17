@@ -18,7 +18,11 @@ const profiles = {};
 const entities = new Map(Object.entries(model).filter(([category]) => !profiles[category])
   .flatMap(([category, records]) => records.map(record => [record.id, { category, ...record }])));
 const sourceBytes = new TextEncoder().encode(code);
-const text = span => new TextDecoder().decode(sourceBytes.slice(span.start_offset, span.end_offset));
+const text = span => {
+  const file = entities.get(span.file_id);
+  const bytes = file ? new TextEncoder().encode(externalContent[file.content_ref]) : sourceBytes;
+  return new TextDecoder().decode(bytes.slice(span.start_offset, span.end_offset));
+};
 
 function directiveFixture(content) {
   const fixture = Object.fromEntries([...new Set([...Object.keys(model), 'Annotation'])].map(category => [category, []]));
@@ -162,7 +166,7 @@ test('all code categories reach projects transitively and shared files retain ev
         : [record.file_id, record.span?.file_id, record.subject_id, record.declaration_id].filter(Boolean);
     return [...new Set(next.flatMap(target => projectsOf(target, visited)))].sort();
   }
-  const ids = ['import:Engine', 'annotation:membership', 'decl:dispatch', 'typeuse:active-context', 'call:dispatch-execute', 'symbol:RenderContext'];
+  const ids = ['annotation:membership', 'decl:SceneManager', 'typeuse:active-context', 'symbol:SceneManager'];
   for (const id of ids) {
     assert(!('project_id' in records.get(id)));
     assert.deepEqual(projectsOf(id), ['project:example']);
@@ -402,7 +406,7 @@ test('Import and Annotation expose source properties and native relationships wi
   for (const record of model.Import) {
     assert(!('kind' in record));
     assert(record.binding_results.some(result => result.site_key === 'source'));
-    if (record.form === 'include') {
+    if (record.form === 'include' && record.source_form === 'angle_header') {
       assert.equal(record.source_form, 'angle_header');
       assert.equal(record.binding_results[0].state, 'unsupported');
       assert(!record.imports_from && !record.refers_to, 'A header path is not a fabricated Symbol reference');
@@ -433,7 +437,7 @@ test('Import source assessments retain unresolved directives, candidates, contex
   assert.throws(() => context.window.CODE_GRAPH_DEPENDENCIES(copy), /candidate needs evidence/);
   source.imports_from = [];
   assessment.state = 'unresolved';
-  assert(!context.window.CODE_GRAPH_DEPENDENCIES(copy).edges.some(edge => edge.kind === 'imports_from'));
+  assert(!context.window.CODE_GRAPH_DEPENDENCIES(copy).edges.some(edge => edge.kind === 'imports_from' && edge.supporting_ids.includes(source.id)));
   assessment.state = 'resolved';
   assert.throws(() => context.window.CODE_GRAPH_DEPENDENCIES(copy), /one selected target/);
 });
@@ -623,6 +627,9 @@ test('walkthrough renders direct call facts, dependency views and unknown SDK bo
   assert(html.includes('call:make-context'));
   assert(html.includes('POSSIBLE_IMPLEMENTATION'));
   assert(html.includes('Code Facts conformance'));
+  assert(html.includes('SceneManager::update_scene(int frame_id)'));
+  assert(html.includes('SceneManager::update_scene()'));
+  assert(html.includes('Application::render(Engine::SceneManager& manager, int frame_id)'));
   assert(!/CallProfile|ImplementationSet|data-entity="(?:Reference|Resolution)"/.test(html));
   browser.state.dependencyView = 'components';
   runInNewContext('renderTour();', browser);
@@ -726,19 +733,65 @@ test('expression and call contracts use native properties and relationships with
   assert(call.includes('target-selection restrictions qualify individual INVOKES relationships'));
 });
 
-test('C++ source preserves the provided constructs and string literals', () => {
-  assert.equal(example.filename, 'example.cpp');
+test('C++ source preserves teaching constructs across a two-project workspace', () => {
+  assert.equal(example.filename, 'engine-workspace');
   const file = entities.get('inventory:example');
   assert.equal(file.language, 'cpp');
   assert.equal(model.Project[0].language_settings.standard, 'c++17');
-  assert.equal(externalContent[file.content_ref], code);
+  assert(externalContent[file.content_ref].includes('class SceneManager'));
   assert(!('content' in file));
-  assert.equal((code.match(/^#include/gm) || []).length, 3);
+  assert.equal((code.match(/^#include/gm) || []).length, 6);
   assert(!code.includes('\\_'));
   assert(!code.includes('\\*'));
   assert(code.includes(String.raw`<< "\\n";`));
   assert(code.includes('SceneManager* owner_manager_;'));
   assert(code.includes('std::make_shared<RenderContext>(42, manager.get())'));
+});
+
+test('checked-in workspace matches offline source content and retains cross-project overload resolution', () => {
+  assert.equal(model.Project.length, 2);
+  for (const file of model.ProjectFile) {
+    const path = file.uri.replace('memory:///', '');
+    assert.equal(readFileSync(new URL(`examples/engine-workspace/${path}`, import.meta.url), 'utf8'),
+      externalContent[file.content_ref], `Offline source drift: ${path}`);
+  }
+  assert(example.relationships.some(edge => edge.source_id === 'project:viewer' && edge.type === 'DEPENDS_ON'
+    && edge.target_id === 'project:example' && edge.state === 'established'));
+  const sourceMembership = project => example.relationships.filter(edge => edge.source_id === project
+    && edge.type === 'CONTAINS' && entities.get(edge.target_id)?.kind === 'source').map(edge => edge.target_id);
+  assert.equal(sourceMembership('project:example').length, 2);
+  assert.equal(sourceMembership('project:viewer').length, 1);
+  const call = entities.get('call:application-update');
+  assert.equal(call.file_id, 'inventory:viewer');
+  assert.equal(call.invokes[0].project_id, 'project:viewer');
+  assert.equal(call.invokes[0].target_id, 'symbol:update-frame');
+  assert.equal(call.invokes[1].target_id, 'symbol:update');
+  assert.equal(call.invokes[1].applicability, 'inapplicable');
+  assert.notEqual(entities.get('symbol:update').id, entities.get('symbol:update-frame').id);
+  assert.equal(entities.get('decl:update-frame-forward').symbol_id, entities.get('decl:update-frame').symbol_id);
+  assert.equal(entities.get('decl:update-frame-forward').file_id, 'inventory:example');
+  assert.equal(entities.get('decl:update-frame').file_id, 'inventory:render');
+  assert.equal(call.possible_implementation[0].target_id, 'decl:update-frame');
+  const view = context.window.CODE_GRAPH_DEPENDENCIES(model);
+  assert(view.components.some(group => group.from === 'symbol:Application' && group.to === 'symbol:SceneManager'));
+  assert(view.edges.some(edge => edge.from === 'symbol:application-render' && edge.to === 'symbol:update-frame' && edge.kind === 'call'));
+  assert(!view.edges.some(edge => edge.from === 'symbol:application-render' && edge.to === 'symbol:update' && edge.kind === 'call'));
+});
+
+test('walkthrough excerpts and full-source browser use the owning file rather than concatenated offsets', () => {
+  const app = readFileSync(new URL('app.js', import.meta.url), 'utf8');
+  const rendering = app.slice(app.indexOf('  function sourceText('), app.indexOf('  function renderProjectCalls('));
+  const browser = { example, state: { tour: 0 }, TextEncoder, TextDecoder, escape: value => String(value) };
+  runInNewContext(`${rendering}\nthis.html = renderSourceExcerpts();`, browser);
+  for (const path of ['engine/SceneManager.hpp', 'engine/RenderContext.hpp', 'viewer/main.cpp', 'viewer/CMakeLists.txt']) {
+    assert(browser.html.includes(path));
+  }
+  browser.state.tour = 4;
+  runInNewContext('this.html = renderSourceExcerpts();', browser);
+  assert(browser.html.includes('viewer/main.cpp'));
+  assert(browser.html.includes('manager.update_scene(frame_id);'));
+  assert.equal(browser.sourceText(entities.get('call:application-update').span), 'manager.update_scene(frame_id)');
+  assert.equal(browser.sourceText(entities.get('decl:update-frame-forward').span), 'void update_scene(int frame_id);');
 });
 
 test('identities, profile bases, and every typed reference are valid', () => {
@@ -782,8 +835,8 @@ test('all spans are real bounded UTF-8 ranges; names lie within declarations', (
     if (!value || typeof value !== 'object') return;
     const file = value.file_id ?? value.span?.file_id ?? inheritedFile;
     if ('start_offset' in value) {
-      assert.equal(file, 'inventory:example');
-      assert(value.start_offset >= 0 && value.end_offset > value.start_offset && value.end_offset <= sourceBytes.length);
+      const bytes = new TextEncoder().encode(externalContent[entities.get(file).content_ref]);
+      assert(value.start_offset >= 0 && value.end_offset > value.start_offset && value.end_offset <= bytes.length);
     }
     Object.values(value).forEach(child => visit(child, file));
   }
@@ -809,13 +862,13 @@ test('all spans are real bounded UTF-8 ranges; names lie within declarations', (
   }
   assert.equal(text(entities.get('call:make-context').span), 'std::make_shared<RenderContext>(42, manager.get())');
   const callee = entities.get('callee:make-context');
-  assert.equal(text(callee.name_uses[0]), 'std::make_shared');
+  assert.equal(text({ ...callee.name_uses[0], file_id: callee.file_id }), 'std::make_shared');
 });
 
 test('forward declarations and out-of-class definitions preserve identity and ownership', () => {
   assert.equal(entities.get('decl:RenderContext-forward').symbol_id, entities.get('decl:RenderContext').symbol_id);
   assert.equal(entities.get('decl:dispatch-forward').symbol_id, entities.get('decl:dispatch').symbol_id);
-  assert.equal(entities.get('decl:dispatch').parent_declaration_id, 'decl:Engine');
+  assert.equal(entities.get('decl:dispatch').parent_declaration_id, 'decl:Engine-render');
   assert.equal(entities.get('symbol:dispatch').owner_symbol_id, 'symbol:SceneManager');
   assert.equal(entities.get('decl:dispatch-forward').parent_declaration_id, 'decl:SceneManager');
   for (const [category, parent] of [['Symbol', 'owner_symbol_id'], ['Declaration', 'parent_declaration_id']]) {
@@ -960,7 +1013,9 @@ test('resolved project targets and unsupported SDK decisions remain distinct', (
         assert.equal(result.candidate_set_completeness, 'complete');
         const selected = targets.filter(edge => edge.state === (isSource ? 'established' : 'selected'));
         assert.equal(selected.length, 1);
-        assert.equal(entities.get(selected[0].target_id).identity_state, 'established');
+        const target = entities.get(selected[0].target_id);
+        if (target.category === 'Symbol') assert.equal(target.identity_state, 'established');
+        else assert.equal(target.category, 'ProjectFile');
         if (!isSource) assert.equal(selected[0].applicability, 'applicable');
       } else {
         assert(!targets.some(edge => edge.state === (isSource ? 'established' : 'selected')));
@@ -1184,7 +1239,7 @@ test('analysis boundaries are descriptor-based projects and file-level dependenc
     const membership = example.relationships.filter(edge => edge.type === 'CONTAINS' && edge.target_id === record.file_id
       && entities.get(edge.source_id).category === 'Project');
     assert.equal(membership.length, 1);
-    assert.equal(membership[0].source_id, 'project:example');
+    assert.equal(membership[0].source_id, record.file_id === 'inventory:viewer' ? 'project:viewer' : 'project:example');
   }
   for (const project of model.Project) {
     assert(!Object.keys(project).some(key => /_id$/.test(key) || ['contains', 'external', 'depends_on'].includes(key)));
@@ -1218,7 +1273,7 @@ test('analysis boundaries are descriptor-based projects and file-level dependenc
     assert(!('parent_directory_id' in directory));
   }
   const descriptorRef = entities.get('project:example').evidence.find(entry => entry.key === 'example-project').detail.descriptor_ref;
-  assert.match(externalContent[descriptorRef], /add_executable\(engine_example example.cpp\)/);
+  assert.match(externalContent[descriptorRef], /add_library\(engine INTERFACE\)/);
   const copy = JSON.parse(JSON.stringify(model));
   copy.Expression.find(record => record.id === 'call:update-dispatch').declaration_id = 'decl:manager-variable';
   const initializerView = context.window.CODE_GRAPH_DEPENDENCIES(copy);
@@ -1297,7 +1352,7 @@ test('aggregated contexts and presence conditions are retained rather than flatt
   source.refers_to.push({ ...source.refers_to[0], project_id: 'context:alternate' });
   copy.Import.find(record => record.id === 'import:Engine').presence_condition = { kind: 'defined', name: 'SYNTHETIC_VARIANT' };
   const group = context.window.CODE_GRAPH_DEPENDENCIES(copy).components.find(group => group.from === 'symbol:main' && group.to === 'symbol:Engine');
-  assert.equal(group.project_ids.slice().sort().join(','), 'context:alternate,project:example');
+  assert.equal(group.project_ids.slice().sort().join(','), 'context:alternate,project:viewer');
   const occurrences = group.occurrences.filter(edge => edge.kind === 'reference');
   assert.equal(occurrences.length, 2);
   assert(occurrences.every(edge => edge.presence_conditions.length === 1));
@@ -1476,6 +1531,28 @@ test('semantic guide renders all direct edge labels as source-node excerpts with
   });
   assert(elements.get('#semantic-content').innerHTML.includes('data-example-id="import:Engine"'));
   assert(elements.get('#semantic-content').innerHTML.includes('inherits[0].semantic_properties[0]'));
+  const content = elements.get('#semantic-content').innerHTML;
+  const [facts, projection] = content.split('<section id="relations-semantic-graph">');
+  assert(facts.includes('id="relations-code-facts"'));
+  assert(facts.includes('id="relations-fact-structure"'));
+  assert(facts.includes('id="relations-fact-semantics"'));
+  assert(projection.includes('id="relations-projection-contract"'));
+  assert(projection.includes('fact_snapshot'));
+  assert(projection.includes('OVERRIDES'));
+  assert(projection.includes('not overloading') || projection.includes('never overloading'));
+  const spec = context.window.CODE_GRAPH_SOURCE;
+  const projectionSpec = spec.split('## 15. Semantic Graph')[1];
+  for (const [layerSpec, rendered] of [[spec.split('## 15. Semantic Graph')[0], facts], [projectionSpec, projection]]) {
+    const rows = layerSpec.split('\n').map(line => line.split('|').slice(1, -1).map(cell => cell.replace(/[`*]/g, '').trim()))
+      .filter(cells => cells.length === 4 && /^[A-Z][A-Z_]+$/.test(cells[0]) && cells[1].includes('->'));
+    assert(rows.length > 0);
+    for (const [label, endpoints] of rows) {
+      assert(rendered.includes(`<code>${label}</code>`), `Missing ${label}`);
+      assert(rendered.replace(/<[^>]+>/g, '').includes(endpoints.replace(/>/g, '&gt;')), `Missing endpoints: ${endpoints}`);
+    }
+  }
+  assert(elements.get('#semantic-toc').innerHTML.includes('href="#relations-code-facts"'));
+  assert(elements.get('#semantic-toc').innerHTML.includes('href="#relations-semantic-graph"'));
   assert.equal(browser.window.schema.propertyHeading, '<h4>Embedded Semantic Properties</h4>');
   assert.equal(browser.window.schema.edgeHeading, '<h4>Semantic Edges</h4>');
   const annotation = browser.window.schema.entities.find(record => record.name === 'Annotation');
@@ -1544,7 +1621,7 @@ test('optional node semantic properties preserve values and contexts without ext
   const frame = entities.get('expression:frame-number');
   assert.equal(frame.semantic_properties[0].name, 'value_category');
   assert.equal(frame.semantic_properties[0].value, 'prvalue');
-  assert.equal(frame.semantic_properties[0].project_id, 'project:example');
+  assert.equal(frame.semantic_properties[0].project_id, 'project:viewer');
   assert(frame.evidence.some(record => record.attribute_path === 'semantic_properties[0]'));
   const copy = JSON.parse(JSON.stringify(model));
   const source = copy.Expression.find(record => record.id === frame.id);

@@ -641,8 +641,30 @@
       }
     };
     const kinds = semanticKinds;
-    document.querySelector('#semantic-toc').innerHTML = kinds.map(({ kind }) =>
-      `<a href="#semantic-${kind}" data-semantic-kind="${kind}">${escape(kind)}</a>`).join('');
+    const nativeFamilies = sections.map(section => ({ ...section,
+      rows: section.markdown.split('\n').filter(line => {
+        const cells = line.split('|').slice(1, -1).map(strip);
+        return cells.length === 4 && /^[A-Z][A-Z_]+$/.test(cells[0]) && cells[1].includes('->');
+      })
+    })).filter(section => section.rows.length);
+    const factFamilies = nativeFamilies.filter(section => section.number < 15);
+    const projection = nativeFamilies.find(section => section.number === 15);
+    const projectionKinds = [...new Set(projection.rows.map(row => strip(row.split('|')[1])))];
+    const renderFamily = (id, title, rows) => `<details class="semantic-kind" id="${id}"><summary>${inline(title)}<span>${rows.length} endpoint contract${rows.length === 1 ? '' : 's'}</span></summary><div class="semantic-kind-body">${rows.map(row => {
+      const [label, endpoints, properties, meaning] = row.split('|').slice(1, -1).map(cell => cell.trim());
+      return `<div class="semantic-endpoints"><h4>${inline(label)}: ${inline(endpoints)}</h4><p>${inline(meaning)}</p><p><strong>Contract:</strong> ${inline(properties)}</p></div>`;
+    }).join('')}</div></details>`;
+    document.querySelector('#semantic-toc').innerHTML = '<a href="#relations-code-facts">01 · Code Facts</a>' +
+      '<a href="#relations-fact-structure">Structure and analysis</a>' +
+      '<a href="#relations-fact-semantics">Direct semantic edges</a>' +
+      '<a href="#relations-semantic-graph">02 · Semantic Graph</a>' +
+      '<a href="#relations-projection-contract">Context and provenance</a>' +
+      '<a href="#relations-projection-kinds">Projection relationships</a>';
+    const factReference = `<section id="relations-code-facts"><div class="eyebrow">01 · CODE FACTS</div><h2>Source structure and semantic facts.</h2><p>Native directed relationships preserve project inventory, logical identity, source occurrences, types, bindings, and analysis support. Semantic results belong to this layer too: Code Facts is not syntax alone. Connections are edges, not foreign-key node properties or intermediate relationship nodes.</p><h3 id="relations-fact-structure">Structure and analysis</h3>${factFamilies.map(section => renderFamily(`relations-facts-${section.number}`, section.title, section.rows)).join('')}<h3 id="relations-fact-semantics">Direct semantic edges</h3>`;
+    const projectionSection = sections.find(section => section.number === 15).markdown;
+    const projectionContract = projectionSection.split('#### Projection Context and Provenance\n')[1].split('\n### Module')[0];
+    const projectionRules = projectionSection.split('CONSISTS_OF records immediate semantic ownership')[1].split('#### Mapping Example')[0];
+    const projectionReference = `<section id="relations-semantic-graph"><div class="eyebrow">02 · SEMANTIC GRAPH</div><h2>Relationships projected from Code Facts.</h2><p>Module, Unit, Member, and Resource organize supported facts for navigation and dependency analysis. Repository, Project, Directory, and ExternalLibrary keep their shared identities and structural edges, without a second copy.</p><p><strong>Same label, different endpoints:</strong> Code Facts <code>Expression INVOKES Symbol</code> supports Semantic Graph <code>Member INVOKES Member</code>. Code Facts <code>INHERITS</code> maps to <code>INHERITANCE</code>; <code>OVERRIDES</code> maps to <code>OVERRIDE</code>, never overloading. Neither layer predicts execution.</p><h3 id="relations-projection-contract">Context and provenance</h3>${markdown(projectionContract)}<h3 id="relations-projection-kinds">Projection relationships</h3>${projectionKinds.map(label => renderFamily(`relations-projection-${label.toLowerCase()}`, '`' + label + '`', projection.rows.filter(row => strip(row.split('|')[1]) === label))).join('')}<h3>Ownership and dependency boundaries</h3>${markdown('CONSISTS_OF records immediate semantic ownership' + projectionRules)}<button class="text-button" data-section="15">Read Semantic Graph specification</button></section>`;
     document.querySelector('#semantic-content').innerHTML = `<div class="eyebrow">${kinds.length} EDGE LABELS · FROM §9 OF THE SPECIFICATION</div><h2>Relationships with explicit meaning.</h2><p>Direct typed edges record semantic facts not fully derivable from the base structure. There are no intermediate relationship nodes or canonical edge IDs. These facts do not predict execution.</p><div class="semantic-rules"><h3>Read every edge the same way</h3><p><strong>Direction:</strong> source node to <code>target_id</code>. The outgoing list determines the uppercase graph label, such as INHERITS. Endpoint categories depend on that label; a type Symbol is not a TypeExpression.</p><p><strong>State:</strong> <code>established</code> records an established relationship; <code>candidate</code> retains a possible relationship. Neither guarantees execution.</p><p><strong>Context:</strong> <code>project_id</code> is required. Optional <code>site_id</code> identifies source syntax, and <code>presence_condition</code> concerns source applicability, not branch execution. Typed <code>details</code> belong to the edge. Additional <code>semantic_properties</code> are optional embedded results that may inherit its context.</p><p><strong>Support:</strong> Evidence identifies the source node and an edge path such as <code>inherits[0]</code>. A nested property has its own path, such as <code>inherits[0].semantic_properties[0]</code>. Coverage retains the same context and assessed path.</p><p><strong>Do not duplicate:</strong> ownership, declarations, operands, HAS_TYPE, references, and selected targets keep their existing representations. Derived component dependencies are not additional canonical edges.</p><button class="text-button" data-section="9">Read semantic edge rules</button> <button class="text-button" data-section="3">Read embedded property rules</button> <button class="text-button" data-section="10">Read derived dependency rules</button></div><p>Except for <code>imports_from</code>, these are independent teaching fragments, not additions to the supplied C++ program. JSON shows source-node excerpts; omitted attributes and hypothetical IDs do not form complete datasets.</p>${kinds.map(({ kind, endpoints, details }, index) => {
       const guide = examples[kind];
       const actual = kind === 'imports_from' ? example?.model.Import.find(record => record.imports_from?.length) : null;
@@ -656,26 +678,27 @@
         } : {}), [kind]: [edge] };
       return `<details class="semantic-kind" id="semantic-${kind}" ${index === 0 ? 'open' : ''}><summary><code>${escape(kind.toUpperCase())}</code><span>${escape(guide.title)}</span></summary><div class="semantic-kind-body"><p class="semantic-endpoints"><strong>Source -> target:</strong> ${inline(endpoints)}</p><p>${escape(guide.meaning)}</p><p><strong>Edge-specific information:</strong> ${inline(details)}</p><div class="semantic-examples"><div><h3>${escape(guide.language || 'C++')} · ${actual ? 'from your walkthrough' : 'illustrative fragment'}</h3><pre class="example-code"><code>${escape(guide.code)}</code></pre></div><div><h3>${actual ? 'Walkthrough source node excerpt' : 'Illustrative source node excerpt'}</h3><pre class="example-code semantic-json"><code>${escape(JSON.stringify(record, null, 2))}</code></pre></div></div><p class="semantic-caution"><strong>Keep the distinction.</strong> ${escape(guide.caution)}</p>${actual ? `<button class="text-button" data-example-id="${escape(actual.id)}">Inspect the source node in the C++ walkthrough</button>` : ''}</div></details>`;
     }).join('')}<button class="text-button" data-section="9">Read all semantic edge definitions</button>`;
+    document.querySelector('#semantic-content').innerHTML = factReference + document.querySelector('#semantic-content').innerHTML + '</section>' + projectionReference;
   }
 
   const tour = [
     { title: 'Preserve the source', heading: 'Start with what was actually written.', chain: ['Project', 'ProjectFile', 'Declaration', 'TypeUse'],
-      text: 'Your C++ example includes three standard headers and defines two classes in namespace Engine. A separate hand-authored CMakeLists.txt teaching descriptor establishes its Project; no build is run. ProjectFile links to versioned external content, while declarations and type uses retain their own UTF-8 byte ranges. Project states C++17 and owns build metadata. Import records preserve both the includes and main’s using directive.',
+      text: 'The engine-workspace repository contains two CMake targets with separate descriptors: the engine interface library owns SceneManager.hpp and RenderContext.hpp; the viewer executable owns main.cpp and its Application class. viewer explicitly DEPENDS_ON engine through target_link_libraries. The root descriptor assembles both targets. Each ProjectFile has its own versioned content and local UTF-8 byte ranges. Quoted includes resolve to project files; standard headers remain outside this projection.',
       caution: 'Analysis reads this immutable input without transforming it. Embedded-language spans also refer to their containing input. The SDK header contents are not exported; Coverage is explicitly partial.' },
     { title: 'Separate identity & occurrence', heading: 'One symbol. Potentially many declarations.', chain: ['Symbol', 'Declaration', 'ProjectFile', 'CallableProfile'],
-      text: 'RenderContext’s forward declaration and class definition share one established type symbol. SceneManager::dispatch_render_pass also has one callable symbol but two declaration records: the member declaration and its later qualified definition. TypeProfile describes the classes; CallableProfile and ParameterProfile describe methods and constructors.',
-      caution: 'The dispatch definition has the Engine declaration as its syntactic parent, but its symbol belongs to SceneManager. Expressions in the body refer directly to the dispatch declaration. Lookup environments stay internal to the analyzer; no block or lexical-area nodes are required.' },
+      text: 'RenderContext’s forward declaration in SceneManager.hpp and definition in RenderContext.hpp share one type symbol. SceneManager::dispatch_render_pass and update_scene(int) each have a declaration in one header and a definition in the other. The reopened Engine namespace has one symbol and two file-local declarations. Application::render likewise separates declaration from definition. Profiles retain the callable parameters independently of source occurrences.',
+      caution: 'The dispatch definition has decl:Engine-render as its syntactic parent, but its symbol belongs to SceneManager. update_scene() and update_scene(int) are different callable symbols: overloading is not overriding. Neither file location nor spelling alone establishes identity.' },
     { title: 'Keep the call syntax', heading: 'One occurrence keeps its call details.', chain: ['Expression', 'Symbol'],
-      text: 'make_shared<RenderContext>(42, manager.get()) contains a separate nested get() call as its second argument. active_context_->execute_pipeline() has a member-access callee whose base operand is the active_context_ expression. dispatch_render_pass() is an unqualified member call; its implicit receiver is not an explicit source argument.',
+      text: 'make_shared<RenderContext>(42, manager.get()) contains a separate nested get() call as its second argument. application.render(*manager, 42) preserves the dereference and both ordered arguments, with semantic parameter bindings stored separately. Application::render calls manager.update_scene(frame_id) across the viewer/engine boundary. active_context_->execute_pipeline() is a call between the two engine classes; dispatch_render_pass() has an implicit receiver, not an extra source argument.',
       caution: 'Factory calls remain ordinary calls, not fabricated source constructor invocations. The call Expression owns HAS_CALLEE and HAS_ARGUMENT; its INVOKES target retains semantic receiver conversions without changing source syntax.' },
     { title: 'Associate types in context', heading: 'Spelling is not a semantic type.', chain: ['Declaration', 'TypeUse', 'TypeExpression', 'Expression'],
       text: 'TypeProfile describes a declared type symbol; TypeExpression describes semantic structures such as shared_ptr<RenderContext> and SceneManager*. TypeUse preserves only their actual spellings and nested uses. HAS_TYPE gives declarations, expressions, and written types their contextual results. Symbol types follow declarations; direct symbol typing is reserved for known external or intrinsic entities without declarations. Inferred types do not require a TypeUse. Public C++17 library contracts support this example’s deductions.',
       caution: 'A raw owner_manager_ pointer does not own the SceneManager lifetime. It is also not owner_symbol_id: that field belongs semantically to RenderContext. Reciprocal references and cyclic calls do not imply a shared_ptr ownership cycle.' },
     { title: 'Resolve without guessing', heading: 'A candidate is not a selected target.', chain: ['Expression', 'Symbol', 'Declaration', 'ProjectFile'],
-      text: 'The project’s non-virtual members have unique declaration-level targets. Other supported applicable or unknown candidates must remain available as possible dependencies when selection is incomplete. For shared_ptr receivers, the semantic binding records a contract-based conversion. SDK calls remain unsupported even where their public result types are known.',
+      text: 'Application::render selects SceneManager::update_scene(int) across projects. The zero-argument update_scene() overload is retained as rejected and inapplicable because its arity does not match; it produces no dependency edge. The selected callable points to its known definition in RenderContext.hpp, while the call assessment stays scoped to viewer. For shared_ptr receivers, binding records a contract-based conversion. SDK calls remain unsupported even where their result types are known.',
       caution: 'Only resolved complete binding assessments permit a selected INVOKES or REFERS_TO edge. A matching name alone does not establish a possible dependency: unknown candidates need evidence. Inapplicable candidates never produce dependency edges.' },
     { title: 'Derive component dependencies', heading: 'Connect components, not execution paths.', chain: ['Expression', 'TypeExpression', 'Import', 'Declaration', 'Coverage', 'Diagnostic'],
-      text: 'SceneManager depends on RenderContext through a shared_ptr type and member references; RenderContext refers back through SceneManager* and update_scene. Aggregate occurrences while retaining their source IDs, edge paths and contexts. Optional POSSIBLE_IMPLEMENTATION edges identify known source definitions with an explicit completeness boundary.',
+      text: 'The explicit build dependency viewer -> engine is separate from the derived Application -> SceneManager code dependency. Within engine, SceneManager depends on RenderContext through a shared_ptr type and member calls; RenderContext refers back through SceneManager* and update_scene(). Aggregate occurrences while retaining their source files, edge paths and caller-project contexts. POSSIBLE_IMPLEMENTATION identifies known definitions, including definitions in another file or project.',
       caution: 'The reciprocal relationships form a permitted structural cycle. A call inside if remains a dependency without proving the branch executes. PresenceCondition describes source applicability, not runtime branching. Neither conformance level requires execution order, path feasibility, or runtime target prediction.' }
   ];
   const example = window.CODE_GRAPH_EXAMPLE;
@@ -699,7 +722,7 @@
       return `<button class="example-ref" data-example-id="${escape(value)}">${escape(value)}</button>`;
     }
     if (value && typeof value === 'object' && 'file_id' in value && 'start_offset' in value) {
-      const snippet = new TextDecoder().decode(new TextEncoder().encode(example.code).slice(value.start_offset, value.end_offset));
+      const snippet = sourceText(value);
       if (snippet.length > 180 || snippet.includes('\n')) {
         return `<code>[${value.start_offset}, ${value.end_offset})</code><details class="record-source"><summary>Source excerpt · ${snippet.trimEnd().split('\n').length} lines</summary><code>${escape(snippet)}</code></details>`;
       }
@@ -731,27 +754,38 @@
     return `<section class="example-category"><h4>Relationships <span>${relationships.length}</span></h4><div class="result-records">${relationships.map(edge => `<article class="example-record"><div class="example-record-heading"><strong>${escape(edge.type)}</strong></div><dl>${Object.entries(edge).filter(([key]) => key !== 'type').map(([key, value]) => `<div><dt>${escape(key)}</dt><dd>${exampleValue(value)}</dd></div>`).join('')}</dl></article>`).join('')}</div></section>`;
   }
   function sourceText(span) {
-    return new TextDecoder().decode(new TextEncoder().encode(example.code).slice(span.start_offset, span.end_offset));
+    const file = example.model.ProjectFile.find(record => record.id === span.file_id);
+    const content = example.externalContent[file?.content_ref] ?? example.code;
+    return new TextDecoder().decode(new TextEncoder().encode(content).slice(span.start_offset, span.end_offset));
   }
   function renderSourceExcerpts() {
     if (!example) return '';
     return `<div class="source-excerpts">${(example.excerpts?.[state.tour] || []).map(excerpt => {
-      const prefix = new TextDecoder().decode(new TextEncoder().encode(example.code).slice(0, excerpt.span.start_offset));
+      const file = example.model.ProjectFile.find(record => record.id === excerpt.span.file_id);
+      const prefix = sourceText({ ...excerpt.span, start_offset: 0, end_offset: excerpt.span.start_offset });
       const text = sourceText(excerpt.span);
       const line = prefix.split('\n').length;
       const endLine = line + text.replace(/\n$/, '').split('\n').length - 1;
-      return `<div><div class="source-caption"><span>${escape(excerpt.caption)}</span><small>Lines ${line}${endLine !== line ? `–${endLine}` : ''}</small></div><pre class="example-code"><code>${escape(text)}</code></pre></div>`;
-    }).join('')}</div><details class="full-source"><summary>Full ${escape(example.filename)} source · ${example.code.trimEnd().split('\n').length} lines</summary><pre class="example-code" id="tour-source"><code>${escape(example.code)}</code></pre><p>${escape(example.sourceNote)}</p></details>`;
+      return `<div><div class="source-caption"><span>${escape(excerpt.caption)}</span><small>${escape(file?.uri.replace('memory:///', '') || example.filename)} · Lines ${line}${endLine !== line ? `–${endLine}` : ''}</small></div><pre class="example-code"><code>${escape(text)}</code></pre></div>`;
+    }).join('')}</div><details class="full-source" ${state.tour === 0 ? 'open' : ''}><summary>${escape(example.filename)} · ${example.model.Project.length} projects · ${example.model.ProjectFile.filter(file => file.kind === 'source').length} C++ files</summary>${example.model.ProjectFile.map(file => `<details class="full-source"><summary>${escape(file.uri.replace('memory:///', ''))}</summary><pre class="example-code"><code>${escape(example.externalContent[file.content_ref])}</code></pre></details>`).join('')}<p>${escape(example.sourceNote)}</p></details>`;
   }
   function renderProjectCalls() {
     if (!dependencies || state.tour < 2) return '';
     const { name, byId } = dependencies;
+    function signature(id) {
+      const profile = example.model.CallableProfile.find(record => record.symbol_id === id);
+      const parameters = (profile?.parameter_ids || []).map(parameter => {
+        const declaration = example.model.Declaration.find(record => record.symbol_id === parameter);
+        return declaration?.span ? sourceText(declaration.span) : name(parameter);
+      });
+      return `${name(id)}(${parameters.join(', ')})`;
+    }
     const memberEdges = dependencies.edges.filter(edge => edge.kind === 'call' && byId.get(edge.to).origin === 'source')
       .sort((a, b) => `${name(a.from)}:${name(a.to)}`.localeCompare(`${name(b.from)}:${name(b.to)}`));
     const rows = state.dependencyView === 'members' ? `<ul class="dependency-list">${memberEdges.map(edge => {
       const site = edge.supporting_ids.find(id => byId.get(id)?.category === 'Expression');
       const conditional = example.conditionalCalls.find(record => record.call_id === site);
-      return `<li><button class="project-call ${edge.certainty === 'possible' ? 'possible-dependency' : ''}" data-example-id="${escape(site)}"><span class="dependency-mark" aria-hidden="true">↗</span><span><code>${escape(name(edge.from))}()</code><span class="project-arrow">→</span><code>${escape(name(edge.to))}()</code><small>${edge.certainty === 'selected' ? 'Selected declaration-level target' : 'Supported possible target'} · candidate scope: ${escape(edge.candidate_set_completeness)}${conditional ? ` · inside source if (${escape(sourceText(byId.get(conditional.condition_expression_id).span))}); execution not assessed` : ''}</small></span></button></li>`;
+      return `<li><button class="project-call ${edge.certainty === 'possible' ? 'possible-dependency' : ''}" data-example-id="${escape(site)}"><span class="dependency-mark" aria-hidden="true">↗</span><span><code>${escape(signature(edge.from))}</code><span class="project-arrow">→</span><code>${escape(signature(edge.to))}</code><small>${edge.certainty === 'selected' ? 'Selected declaration-level target' : 'Supported possible target'} · candidate scope: ${escape(edge.candidate_set_completeness)}${conditional ? ` · inside source if (${escape(sourceText(byId.get(conditional.condition_expression_id).span))}); execution not assessed` : ''}</small></span></button></li>`;
     }).join('')}</ul>` : `<div class="component-dependencies">${dependencies.components.map(group => {
       const supporting = [...new Set(group.occurrences.flatMap(edge => edge.supporting_ids))];
       const possible = group.occurrences.filter(edge => edge.certainty === 'possible').length;

@@ -156,11 +156,15 @@ component styles and graph edges reference semantic tokens.
   Structural labels such as **HAS_PROJECT** identify native graph relationships,
   not foreign-key properties on Project nodes. Connections are permitted by the
   schema, not mandatory for every record or evidence that a program executes.
-- **Guided walkthrough:** explore the supplied C++ `Engine` example, with
-  `SceneManager`, `RenderContext`, and `main`. Focused excerpts link forward
-  declarations, out-of-class definitions, nested and member calls, smart-pointer
-  types, resolutions, and structural dependencies to record cards or JSON.
-  Expand the **Full source** disclosure to read the complete code, or choose
+- **Guided walkthrough:** explore the two-project C++17 workspace in
+  [examples/engine-workspace](examples/engine-workspace). The `viewer` executable
+  contains `Application` in one source file and depends on the header-only `engine`
+  library, whose two files define `SceneManager` and `RenderContext`.
+  Each target has its own CMake descriptor; the root descriptor assembles them.
+  Focused excerpts link cross-file declarations and definitions, overload selection
+  and rejection, nested and member calls, parameter bindings, reference and
+  smart-pointer types, and intra-/cross-project dependencies to cards or JSON.
+  Expand the workspace disclosure and an individual file to read its source, or choose
   **Full example** to inspect all illustrated records. Click a record ID or
   member-reference row to follow its references. **Components** aggregates
   supporting occurrences; **Member references** shows declaration-level call
@@ -176,8 +180,9 @@ component styles and graph edges reference semantic tokens.
   absent conditions mean unknown, not unconditional.
 - **Full specification:** read every section of the canonical document with
   clickable structure names.
-- **Semantic relations:** a dedicated reference for all 12 direct edge labels in
-  §9, with exact endpoint categories, plain-language explanations, source
+- **Relations:** separate references for **Code Facts** and **Semantic Graph**.
+  Code Facts covers native structural, type, binding, and analysis relationships,
+  followed by all 11 direct semantic edge labels in §9 with exact endpoint categories, plain-language explanations, source
   fragments, source-node JSON excerpts, and common misinterpretations. Open it from
   the header or a participating source structure; `index.html#semantics` opens it
   directly. The `imports_from` example links to the actual C++ walkthrough
@@ -187,6 +192,10 @@ component styles and graph edges reference semantic tokens.
   direct edge, without an intermediate node or canonical edge ID. Object
   serialization uses outgoing lists such as `inherits`, `overrides`, and
   `imports_from` on the source node, with context, state, and typed edge details.
+  Semantic Graph covers every relationship contract from §15, including shared
+  structural edges, containment, imports, dependencies, and cross-layer provenance.
+  Both references read their contracts from the canonical specification and keep
+  layer-specific endpoints, context, uncertainty, and support distinct.
 
 Use `/` to focus search and `Escape` to clear it. The graph's arrows indicate
 stored relationships or embedded values. Profiles have independent identities
@@ -206,8 +215,23 @@ Step views are projections whose references resolve in the full
 example. Evidence and coverage explicitly state the example's assumptions and
 limited analysis boundaries. Public C++17 standard-library type contracts are
 supplied manually; SDK overload sets and stream insertion chains are not claimed.
-The original string literals are preserved; Markdown escapes on identifiers and
-pointer asterisks were removed before establishing the immutable teaching input.
+The checked-in C++ and CMake files exactly match the offline content store; the
+test suite rejects drift. After changing a teaching source, update its embedded
+copy in `example-model.js` and the affected records/excerpts, then run
+`node --test example-model.test.mjs`. Each span is local to its owning file.
+The repository revision is an illustrative Git snapshot identifier, not an actual
+nested repository. The folder intentionally has no separate `.git` directory.
+
+Optional source validation (no executable is run):
+
+```sh
+clang++ -std=c++17 -Wall -Wextra -pedantic -fsyntax-only \
+  -I examples/engine-workspace/engine examples/engine-workspace/viewer/main.cpp
+```
+
+With CMake installed, the root descriptor can also configure and build the two
+targets. Do not run `viewer`: the retained reciprocal calls intentionally
+illustrate a structural cycle, not a terminating application workflow.
 
 `Symbol` properties are `name`, `kind`, `origin`, and `identity_state`, in addition
 to the common stable `id` and optional semantic properties. Section 5 describes
@@ -294,9 +318,10 @@ Source transformation and execution-path analysis are outside its scope.
 Recording known branch or target-selection predicates does not require proving
 that a branch executes. Propagating provider-selection conditions through
 assignments is optional additional analysis, not a conformance requirement.
-The explorer's semantic-edge reference describes first-layer facts, while its
-structural dependency views illustrate projections. Neither defines the final
-Semantic Graph schema or writes aggregated display entities back as source facts.
+The explorer's Relations reference separates first-layer facts from the Semantic
+Graph relationship schema in §15. Its structural dependency views illustrate
+projections without populating a complete second-layer store or writing
+aggregated display entities back as source facts.
 
 `TypeProfile` describes a declared type symbol; `TypeExpression` describes a
 semantic type structure; `TypeUse` preserves an actual source spelling.

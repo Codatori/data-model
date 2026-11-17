@@ -19,7 +19,7 @@
     <nav aria-label="Presentation views">
       <button class="nav-button active" data-view="explorer" aria-pressed="true">Explore the model</button>
       <button class="nav-button" data-view="walkthrough" aria-pressed="false">Guided walkthrough</button>
-      <button class="nav-button" data-view="semantics" aria-pressed="false">Semantic relations</button>
+      <button class="nav-button" data-view="semantics" aria-pressed="false">Relations</button>
       <button class="nav-button" data-view="specification" aria-pressed="false">Full specification</button>
     </nav>
     <label class="theme-picker" for="theme-picker"><span>Theme</span><select id="theme-picker" aria-label="Color theme"><option value="zen-graph">Zen Graph · light</option><option value="midnight-satori">Midnight Satori · dark</option></select></label>
@@ -77,7 +77,7 @@
     </section>
     <section id="semantics-view" class="view" hidden aria-labelledby="semantics-heading">
       <div class="spec-layout semantic-layout">
-        <aside><div class="eyebrow">RELATIONSHIP REFERENCE</div><h2 id="semantics-heading">Semantic relations</h2><p>What each relation means, which records it connects, and when it belongs in the model. Select a kind to open its explanation and example.</p><nav id="semantic-toc" aria-label="Semantic relation kinds"></nav></aside>
+        <aside><div class="eyebrow">RELATIONSHIP REFERENCE</div><h2 id="semantics-heading">Relations</h2><p>Code Facts preserve source structure and supported semantic results. Semantic Graph projects those facts into repository, type, and member relationships.</p><nav id="semantic-toc" aria-label="Relations by layer"></nav></aside>
         <article id="semantic-content" class="prose"></article>
       </div>
     </section>
