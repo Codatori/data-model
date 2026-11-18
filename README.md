@@ -12,25 +12,18 @@
 
 The **Unified Software Graph (USG)** has two logically and constructively distinct
 layers. Both schemas are defined in the canonical specification; section 15
-defines the **Semantic Graph** projection and its Code Facts mapping contract.
+defines the **Semantic Code Graph** projection and its Code Facts mapping contract.
 
 - **Code Facts:** source observations and supported semantic analysis results,
   centered on Symbol identity, with declarations, expressions, types, name uses,
   contextual bindings, evidence, and explicit uncertainty. This is the detailed
   input to the user-facing graph, not a syntax-only intermediate representation.
-- **Semantic Graph:** Module (code file or logical namespace/package/module),
-  Unit (structural type), Member (callable or data entity), and Resource (non-code
-  file), with containment, imports, calls, access, contracts, and dependencies
-  traced to Code Facts. Repository, Project, ExternalLibrary, and Directory are
-  shared identities in both layers, not duplicate nodes. Namespaces belong to
-  Module, not Unit; parameters belong to their callable Member. File DECLARES
-  relationships preserve physical participation separately from logical ownership.
-  DERIVED_FROM provides cross-layer navigation to supporting files and Symbols.
+- **Semantic Code Graph:** Module follows language and version rules (Java 9+, C++20+, Python, JavaScript/TypeScript), with `IMPORT` between resolved module boundaries. Namespace is a C++ namespace or Java package that can span files. Unit is a structural type or a scope-level function or variable. Member is a callable or data entity nested inside a Unit. Repository, Project, Directory, ProjectFile, and Resource are shared identities. File `DECLARES` records participation separately from semantic ownership, and `DERIVED_FROM` retains traceable support.
 
-Structure Map offers **Code Facts** (18 structures) and **Semantic Graph**
-(8 types, including the 4 shared ones), or all 22 structures together. The same
-relationship name can have different endpoint types in each layer: Code Facts
-Expression INVOKES Symbol supports Semantic Graph Member INVOKES Member.
+Structure Map offers **Code Facts** (19 structures) and **Semantic Code Graph**
+(9 types, including the 5 shared ones), or all 23 structures together. The same
+relationship name can have different endpoint types: Code Facts `Expression INVOKES Symbol`
+can support `Member INVOKES Unit` when a method calls a free function.
 OVERRIDE means overriding, not overloading. ACCESSES describes data reads/writes;
 USES records non-invoking callable references or captures, not calls inside lambdas.
 The explorer visualizes the schema; it does not implement a production projection
@@ -100,7 +93,7 @@ Repository construction has four conceptual stages:
    references or name-only identity merging.
 3. Reconcile cross-project identities and bindings in **Code Facts**, preserving
    configuration differences, evidence, and incomplete or failed areas.
-4. Build the **Semantic Graph** from an identified reconciled fact snapshot after
+4. Build the **Semantic Code Graph** from an identified reconciled fact snapshot after
    all inventoried project jobs reach terminal states. Failed jobs do not count
    as successfully analyzed empty projects, and a finished batch is not proof
    of complete semantic knowledge.
@@ -180,7 +173,7 @@ component styles and graph edges reference semantic tokens.
   absent conditions mean unknown, not unconditional.
 - **Full specification:** read every section of the canonical document with
   clickable structure names.
-- **Relations:** separate references for **Code Facts** and **Semantic Graph**.
+- **Relations:** separate references for **Code Facts** and **Semantic Code Graph**.
   Code Facts covers native structural, type, binding, and analysis relationships,
   followed by all 11 direct semantic edge labels in §9 with exact endpoint categories, plain-language explanations, source
   fragments, source-node JSON excerpts, and common misinterpretations. Open it from
@@ -192,7 +185,7 @@ component styles and graph edges reference semantic tokens.
   direct edge, without an intermediate node or canonical edge ID. Object
   serialization uses outgoing lists such as `inherits`, `overrides`, and
   `imports_from` on the source node, with context, state, and typed edge details.
-  Semantic Graph covers every relationship contract from §15, including shared
+  Semantic Code Graph covers every relationship contract from §15, including shared
   structural edges, containment, imports, dependencies, and cross-layer provenance.
   Both references read their contracts from the canonical specification and keep
   layer-specific endpoints, context, uncertainty, and support distinct.
@@ -307,9 +300,9 @@ blocks remain visible without asserting branch execution, feasibility, or
 termination. A `PresenceCondition` concerns source/configuration applicability,
 not a runtime branch. Aggregated contexts need not apply simultaneously.
 
-The Code Facts model has **18 named structures across seven documentation groups**
+The Code Facts model has **19 named structures across seven documentation groups**
 and **two conformance levels**: syntactic and semantic. These are capabilities of
-the first USG layer, not the Code Facts / Semantic Graph architecture. The semantic conformance level targets structural component
+the first USG layer, not the Code Facts / Semantic Code Graph architecture. The semantic conformance level targets structural component
 dependencies; a unique selected target is not required to preserve supported
 possible dependencies. Optional implementation facts are source-definition
 knowledge, not a linker/runtime completeness guarantee. `SourceMapping`,

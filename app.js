@@ -9,9 +9,9 @@
 
   const layers = [
     { id: 'code-facts', name: 'Code Facts', color: 'var(--layer-identity)' },
-    { id: 'semantic-graph', name: 'Semantic Graph', color: 'var(--layer-relations)' }
+    { id: 'semantic-graph', name: 'Semantic Code Graph', color: 'var(--layer-relations)' }
   ];
-  const sharedTypes = new Set(['Repository', 'Project', 'ExternalLibrary', 'Directory']);
+  const sharedTypes = new Set(['Repository', 'Project', 'Directory', 'ProjectFile', 'Resource']);
   const summaries = {
     PresenceCondition: 'Structured conditional activation',
     Repository: 'A Git repository checkout at the processed commit',
@@ -31,10 +31,11 @@
     Annotation: 'A written application with explicit targets and arguments',
     Coverage: 'A current assessment of an explicit area and dimension',
     Diagnostic: 'An issue with primary and related facts or source locations',
-    Module: 'A code file or logical namespace, package, or module',
-    Unit: 'A structural type with reconciled identity',
-    Member: 'A significant callable or data entity',
-    Resource: 'An inventoried non-code project file'
+    Module: 'A module defined by language and resolution rules',
+    Namespace: 'A C++ namespace or Java package that can span files',
+    Unit: 'A structural type or scope-level function or variable',
+    Member: 'A callable or data entity nested within a Unit',
+    Resource: 'A non-code classification of an inventoried file'
   };
   const profiles = {};
   const sections = [...source.matchAll(/^## (\d+)\. (.+)$/gm)].map((match, index, all) => ({
@@ -123,7 +124,7 @@
     ['Annotation', 1, 5], ['Expression', 2, 5], ['CallableProfile', 5, 5],
     ['TypeUse', 1, 6], ['TypeExpression', 3, 6],
     ['ParameterProfile', 5, 6], ['TypeProfile', 5, 7],
-    ['Module', 2, 2], ['Resource', 1, 2], ['Unit', 3, 3], ['Member', 3, 4]
+    ['Module', 2, 2], ['Resource', 1, 2], ['Namespace', 3, 2], ['Unit', 3, 3], ['Member', 3, 4]
   ].map(([name, column, row]) => ({ name, column, row, x: 64 + column * 290, y: 40 + row * 190 }));
   const inverseLabels = {};
   const overviewFields = new Set([
@@ -143,7 +144,7 @@
     'SUBSTITUTES_VALUE', 'CONVERTS_FROM', 'CONVERTS_TO', 'IMPORTS', 'CONTAINS_IMPORT', 'HAS_SOURCE_EXPRESSION',
     'HAS_IMPORT_EXPRESSION', 'IMPORTS_FROM', 'CONTAINS_ANNOTATION', 'ANNOTATES', 'HAS_APPLICATION_EXPRESSION',
     'ASSESSED_IN', 'EXCLUDES_SOURCE', 'REPORTED_IN', 'RELATED_LOCATION',
-    'DECLARES', 'DEPENDS', 'IMPLEMENTS', 'INHERITANCE', 'ACCESSES', 'USES', 'OVERRIDE'
+    'CLASSIFIES', 'DECLARES', 'IMPORT', 'DEPENDS', 'IMPLEMENTS', 'INHERITANCE', 'ACCESSES', 'USES', 'OVERRIDE'
   ]);
   const schemaRelations = [];
   for (const link of links) {
@@ -286,7 +287,7 @@
     const connected = related(state.selected);
     document.querySelector('#graph-groups').innerHTML = graphNodes.filter(node => matches.has(node.name)).map(node => {
       const entity = byName.get(node.name);
-      const type = entity.shared ? 'Code Facts + Semantic Graph' : entity.profile ? 'Shared identity' : ['SourceSpan', 'PresenceCondition'].includes(entity.name) ? 'Embedded value' : entity.layer.name;
+      const type = entity.shared ? `Code Facts + ${layers[1].name}` : entity.profile ? 'Shared identity' : ['SourceSpan', 'PresenceCondition'].includes(entity.name) ? 'Embedded value' : entity.layer.name;
       return `<div class="node-wrap schema-node" style="left:${node.x}px;top:${node.y}px;--layer-color:${entity.layer.color}"><button class="node ${entity.name === state.selected ? 'selected' : connected.has(entity.name) ? 'connected' : 'dimmed'}" data-node="${entity.name}" aria-pressed="${entity.name === state.selected}" title="${escape(entity.summary)}"><span class="node-name"><span class="layer-dot" aria-hidden="true"></span>${entity.name}</span><span class="node-desc">${escape(entity.summary)}</span><span class="node-type">${type}</span></button></div>`;
     }).join('');
     document.querySelector('#empty-state').hidden = visible.length > 0;
@@ -657,14 +658,14 @@
     document.querySelector('#semantic-toc').innerHTML = '<a href="#relations-code-facts">01 · Code Facts</a>' +
       '<a href="#relations-fact-structure">Structure and analysis</a>' +
       '<a href="#relations-fact-semantics">Direct semantic edges</a>' +
-      '<a href="#relations-semantic-graph">02 · Semantic Graph</a>' +
+      `<a href="#relations-semantic-graph">02 · ${layers[1].name}</a>` +
       '<a href="#relations-projection-contract">Context and provenance</a>' +
       '<a href="#relations-projection-kinds">Projection relationships</a>';
     const factReference = `<section id="relations-code-facts"><div class="eyebrow">01 · CODE FACTS</div><h2>Source structure and semantic facts.</h2><p>Native directed relationships preserve project inventory, logical identity, source occurrences, types, bindings, and analysis support. Semantic results belong to this layer too: Code Facts is not syntax alone. Connections are edges, not foreign-key node properties or intermediate relationship nodes.</p><h3 id="relations-fact-structure">Structure and analysis</h3>${factFamilies.map(section => renderFamily(`relations-facts-${section.number}`, section.title, section.rows)).join('')}<h3 id="relations-fact-semantics">Direct semantic edges</h3>`;
     const projectionSection = sections.find(section => section.number === 15).markdown;
     const projectionContract = projectionSection.split('#### Projection Context and Provenance\n')[1].split('\n### Module')[0];
     const projectionRules = projectionSection.split('CONSISTS_OF records immediate semantic ownership')[1].split('#### Mapping Example')[0];
-    const projectionReference = `<section id="relations-semantic-graph"><div class="eyebrow">02 · SEMANTIC GRAPH</div><h2>Relationships projected from Code Facts.</h2><p>Module, Unit, Member, and Resource organize supported facts for navigation and dependency analysis. Repository, Project, Directory, and ExternalLibrary keep their shared identities and structural edges, without a second copy.</p><p><strong>Same label, different endpoints:</strong> Code Facts <code>Expression INVOKES Symbol</code> supports Semantic Graph <code>Member INVOKES Member</code>. Code Facts <code>INHERITS</code> maps to <code>INHERITANCE</code>; <code>OVERRIDES</code> maps to <code>OVERRIDE</code>, never overloading. Neither layer predicts execution.</p><h3 id="relations-projection-contract">Context and provenance</h3>${markdown(projectionContract)}<h3 id="relations-projection-kinds">Projection relationships</h3>${projectionKinds.map(label => renderFamily(`relations-projection-${label.toLowerCase()}`, '`' + label + '`', projection.rows.filter(row => strip(row.split('|')[1]) === label))).join('')}<h3>Ownership and dependency boundaries</h3>${markdown('CONSISTS_OF records immediate semantic ownership' + projectionRules)}<button class="text-button" data-section="15">Read Semantic Graph specification</button></section>`;
+    const projectionReference = `<section id="relations-semantic-graph"><div class="eyebrow">02 · ${layers[1].name.toUpperCase()}</div><h2>Relationships projected from Code Facts.</h2><p>Module, Namespace, Unit, and Member organize supported facts for navigation and dependency analysis. ${[...sharedTypes].join(', ')} keep their shared identities and structural edges, without a second copy.</p><p><strong>Same label, different endpoints:</strong> Code Facts <code>Expression INVOKES Symbol</code> can support <code>Member INVOKES Unit</code>, for example when a method calls a free function. Code Facts <code>INHERITS</code> maps to <code>INHERITANCE</code>; <code>OVERRIDES</code> maps to <code>OVERRIDE</code>, never overloading. Neither layer predicts execution.</p><h3 id="relations-projection-contract">Context and provenance</h3>${markdown(projectionContract)}<h3 id="relations-projection-kinds">Projection relationships</h3>${projectionKinds.map(label => renderFamily(`relations-projection-${label.toLowerCase()}`, '`' + label + '`', projection.rows.filter(row => strip(row.split('|')[1]) === label))).join('')}<h3>Ownership and dependency boundaries</h3>${markdown('CONSISTS_OF records immediate semantic ownership' + projectionRules)}<button class="text-button" data-section="15">Read ${layers[1].name} specification</button></section>`;
     document.querySelector('#semantic-content').innerHTML = `<div class="eyebrow">${kinds.length} EDGE LABELS · FROM §9 OF THE SPECIFICATION</div><h2>Relationships with explicit meaning.</h2><p>Direct typed edges record semantic facts not fully derivable from the base structure. There are no intermediate relationship nodes or canonical edge IDs. These facts do not predict execution.</p><div class="semantic-rules"><h3>Read every edge the same way</h3><p><strong>Direction:</strong> source node to <code>target_id</code>. The outgoing list determines the uppercase graph label, such as INHERITS. Endpoint categories depend on that label; a type Symbol is not a TypeExpression.</p><p><strong>State:</strong> <code>established</code> records an established relationship; <code>candidate</code> retains a possible relationship. Neither guarantees execution.</p><p><strong>Context:</strong> <code>project_id</code> is required. Optional <code>site_id</code> identifies source syntax, and <code>presence_condition</code> concerns source applicability, not branch execution. Typed <code>details</code> belong to the edge. Additional <code>semantic_properties</code> are optional embedded results that may inherit its context.</p><p><strong>Support:</strong> Evidence identifies the source node and an edge path such as <code>inherits[0]</code>. A nested property has its own path, such as <code>inherits[0].semantic_properties[0]</code>. Coverage retains the same context and assessed path.</p><p><strong>Do not duplicate:</strong> ownership, declarations, operands, HAS_TYPE, references, and selected targets keep their existing representations. Derived component dependencies are not additional canonical edges.</p><button class="text-button" data-section="9">Read semantic edge rules</button> <button class="text-button" data-section="3">Read embedded property rules</button> <button class="text-button" data-section="10">Read derived dependency rules</button></div><p>Except for <code>imports_from</code>, these are independent teaching fragments, not additions to the supplied C++ program. JSON shows source-node excerpts; omitted attributes and hypothetical IDs do not form complete datasets.</p>${kinds.map(({ kind, endpoints, details }, index) => {
       const guide = examples[kind];
       const actual = kind === 'imports_from' ? example?.model.Import.find(record => record.imports_from?.length) : null;
@@ -799,7 +800,7 @@
   function renderTour() {
     const step = tour[state.tour];
     document.querySelector('#tour-steps').innerHTML = tour.map((item, index) => `<li><button class="step-button ${index === state.tour ? 'active' : ''}" data-step="${index}" aria-current="${index === state.tour ? 'step' : 'false'}"><span class="step-number">${index + 1}</span>${item.title}</button></li>`).join('');
-    document.querySelector('#tour-content').innerHTML = `<div class="eyebrow">STEP ${String(state.tour + 1).padStart(2, '0')} / ${tour.length} · ${step.title}</div><h2>${step.heading}</h2><div class="eyebrow">${escape(example?.filename || 'SOURCE EXAMPLE')} · FOCUSED EXCERPTS FROM YOUR C++ CODE</div>${renderSourceExcerpts()}<p>${step.text}</p><div class="tour-chain">${step.chain.map((name, index) => `${index ? '<span class="tour-arrow" aria-hidden="true">→</span>' : ''}<button class="tour-entity" data-entity="${name}">${name}</button>`).join('')}</div><small class="connection-caveat">Conceptual learning sequence, not literal stored edges. The result below shows the actual record-to-record references.</small><div id="example-result" class="example-result"></div>${renderProjectCalls()}<div class="tour-caution"><strong>Keep this distinction.</strong><br>${step.caution}</div>${state.tour === tour.length - 1 ? '<div class="prose"><h3>Code Facts conformance</h3><p><strong>Syntactic:</strong> preserved source structure with unknown semantic results.<br><strong>Semantic:</strong> established identities, types, direct known and possible targets, relations, and evidence.<br>Both describe Code Facts, not the Semantic Graph projection defined in section 15. Possible implementation edges are optional source-level information; neither level predicts execution.</p><button class="text-button" data-section="14">Read the exact conformance requirements →</button></div>' : ''}<div class="tour-actions"><button class="secondary-button" data-tour-move="-1" ${state.tour === 0 ? 'disabled' : ''}>← Previous</button>${state.tour < tour.length - 1 ? '<button class="primary-button" data-tour-move="1">Next step →</button>' : '<button class="primary-button" data-view="explorer">Explore the model →</button>'}</div>`;
+    document.querySelector('#tour-content').innerHTML = `<div class="eyebrow">STEP ${String(state.tour + 1).padStart(2, '0')} / ${tour.length} · ${step.title}</div><h2>${step.heading}</h2><div class="eyebrow">${escape(example?.filename || 'SOURCE EXAMPLE')} · FOCUSED EXCERPTS FROM YOUR C++ CODE</div>${renderSourceExcerpts()}<p>${step.text}</p><div class="tour-chain">${step.chain.map((name, index) => `${index ? '<span class="tour-arrow" aria-hidden="true">→</span>' : ''}<button class="tour-entity" data-entity="${name}">${name}</button>`).join('')}</div><small class="connection-caveat">Conceptual learning sequence, not literal stored edges. The result below shows the actual record-to-record references.</small><div id="example-result" class="example-result"></div>${renderProjectCalls()}<div class="tour-caution"><strong>Keep this distinction.</strong><br>${step.caution}</div>${state.tour === tour.length - 1 ? '<div class="prose"><h3>Code Facts conformance</h3><p><strong>Syntactic:</strong> preserved source structure with unknown semantic results.<br><strong>Semantic:</strong> established identities, types, direct known and possible targets, relations, and evidence.<br>Both describe Code Facts, not the Semantic Code Graph projection defined in section 15. Possible implementation edges are optional source-level information; neither level predicts execution.</p><button class="text-button" data-section="14">Read the exact conformance requirements →</button></div>' : ''}<div class="tour-actions"><button class="secondary-button" data-tour-move="-1" ${state.tour === 0 ? 'disabled' : ''}>← Previous</button>${state.tour < tour.length - 1 ? '<button class="primary-button" data-tour-move="1">Next step →</button>' : '<button class="primary-button" data-view="explorer">Explore the model →</button>'}</div>`;
     renderExample();
   }
 

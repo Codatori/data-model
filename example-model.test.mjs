@@ -92,23 +92,27 @@ test('relationship graph has one node per specification type and uses source-bac
     ['Coverage', 'Project', 'ASSESSED_IN'], ['Coverage', 'ProjectFile', 'EXCLUDES_SOURCE'],
     ['Diagnostic', 'Project', 'REPORTED_IN'], ['Diagnostic', 'ProjectFile', 'LOCATED_IN'],
     ['Diagnostic', 'ProjectFile', 'RELATED_LOCATION'],
-    ['Project', 'Module', 'CONTAINS'], ['Directory', 'Module', 'CONTAINS'],
-    ['Project', 'Resource', 'CONTAINS'], ['Directory', 'Resource', 'CONTAINS'],
-    ['Module', 'Module', 'IMPORTS'], ['Module', 'ExternalLibrary', 'IMPORTS'],
-    ['Module', 'Module', 'CONSISTS_OF'], ['Module', 'Unit', 'CONSISTS_OF'],
-    ['Module', 'Member', 'CONSISTS_OF'], ['Module', 'Module', 'DECLARES'],
-    ['Module', 'Unit', 'DECLARES'], ['Module', 'Member', 'DECLARES'],
+    ['Project', 'Module', 'CONTAINS'], ['Resource', 'ProjectFile', 'CLASSIFIES'],
+    ['Module', 'Module', 'IMPORT'], ['Module', 'Namespace', 'CONTAINS'],
+    ['ProjectFile', 'Module', 'DECLARES'], ['ProjectFile', 'Namespace', 'DECLARES'],
+    ['ProjectFile', 'Unit', 'DECLARES'], ['ProjectFile', 'Member', 'DECLARES'],
+    ['Namespace', 'Namespace', 'CONSISTS_OF'], ['Namespace', 'Unit', 'CONSISTS_OF'],
+    ['Module', 'Unit', 'CONSISTS_OF'],
     ['Unit', 'Unit', 'CONSISTS_OF'], ['Unit', 'Unit', 'DEPENDS'],
     ['Unit', 'Unit', 'IMPLEMENTS'], ['Unit', 'Unit', 'INHERITANCE'],
     ['Unit', 'Member', 'CONSISTS_OF'], ['Unit', 'Member', 'DECLARES'],
     ['Member', 'Member', 'CONSISTS_OF'], ['Member', 'Member', 'INVOKES'],
-    ['Member', 'Member', 'ACCESSES'], ['Member', 'Member', 'USES'],
+    ['Member', 'Unit', 'INVOKES'], ['Unit', 'Member', 'INVOKES'], ['Unit', 'Unit', 'INVOKES'],
+    ['Unit', 'Unit', 'ACCESSES'], ['Member', 'Member', 'ACCESSES'], ['Member', 'Member', 'USES'],
     ['Member', 'Member', 'OVERRIDE'], ['Member', 'Member', 'IMPLEMENTS']
   ]) assert(schemaRelations.some(group => group.displayFrom === from && group.displayTo === to && group.label === label && group.overview), `${from} -> ${to}`);
   for (const [from, to] of [
-    ['Module', 'ProjectFile'], ['Module', 'Symbol'], ['Unit', 'Symbol'],
-    ['Member', 'Symbol'], ['Member', 'Declaration'], ['Resource', 'ProjectFile']
+    ['Module', 'ProjectFile'], ['Module', 'Symbol'], ['Namespace', 'ProjectFile'],
+    ['Namespace', 'Symbol'], ['Unit', 'Symbol'], ['Member', 'Symbol'], ['Member', 'Declaration']
   ]) assert(schemaRelations.some(group => group.from === from && group.to === to && group.label === 'DERIVED_FROM'));
+  assert(!schemaRelations.some(group => group.from === 'Directory' && group.to === 'Module'));
+  assert(!schemaRelations.some(group => ['Module', 'Namespace'].includes(group.from)
+    && group.to === 'Member' && group.label === 'CONSISTS_OF'));
   assert(schemaRelations.some(group => group.from === 'Project' && group.to === 'Project' && group.label === 'DEPENDS_ON'));
   const codeTypes = ['Import', 'Annotation', 'Declaration', 'TypeUse', 'Expression', 'Symbol'];
   assert(!schemaRelations.some(group => group.from === 'Project' && codeTypes.includes(group.to)
@@ -211,28 +215,29 @@ test('interactive graph filters relationship endpoints without discarding moved 
   runInNewContext(`${setup}\n${labeling}\n${filtering}\nwindow.graph = { state, graphNodes, filteredEntities, related };\n})();`, browser);
   const { state, graphNodes, filteredEntities, related } = browser.window.graph;
   assert(graphNodes.every(node => Number.isFinite(node.x) && Number.isFinite(node.y)));
-  assert.equal(filteredEntities().length, 22);
+  assert.equal(filteredEntities().length, 23);
   state.layer = 'semantic-graph';
   assert.deepEqual(Array.from(filteredEntities(), entity => entity.name).sort(),
-    ['Directory', 'ExternalLibrary', 'Member', 'Module', 'Project', 'Repository', 'Resource', 'Unit']);
+    ['Directory', 'Member', 'Module', 'Namespace', 'Project', 'ProjectFile', 'Repository', 'Resource', 'Unit']);
   state.layer = 'code-facts';
-  assert.equal(filteredEntities().length, 18);
-  assert(!filteredEntities().some(entity => ['Module', 'Unit', 'Member', 'Resource'].includes(entity.name)));
+  assert.equal(filteredEntities().length, 19);
+  assert(filteredEntities().some(entity => entity.name === 'Resource'));
+  assert(!filteredEntities().some(entity => ['Module', 'Namespace', 'Unit', 'Member'].includes(entity.name)));
   state.layer = 'all';
   const expression = graphNodes.find(node => node.name === 'Expression');
   expression.x = -150; expression.y = 420;
   state.relationFilter = 'INVOKES';
-  assert.deepEqual(Array.from(filteredEntities(), entity => entity.name).sort(), ['Expression', 'Member', 'Symbol']);
+  assert.deepEqual(Array.from(filteredEntities(), entity => entity.name).sort(), ['Expression', 'Member', 'Symbol', 'Unit']);
   state.selected = 'Expression'; state.neighbors = true;
   assert.deepEqual(Array.from(related('Expression')).sort(), ['Expression', 'Symbol']);
   state.layer = 'semantic-graph'; state.neighbors = false;
-  assert.deepEqual(Array.from(filteredEntities(), entity => entity.name), ['Member']);
+  assert.deepEqual(Array.from(filteredEntities(), entity => entity.name).sort(), ['Member', 'Unit']);
   state.layer = 'code-facts';
   assert.deepEqual(Array.from(filteredEntities(), entity => entity.name).sort(), ['Expression', 'Symbol']);
   state.query = 'no-matching-structure';
   assert.equal(filteredEntities().length, 0);
   state.query = ''; state.layer = 'all'; state.neighbors = false; state.relationFilter = 'all';
-  assert.equal(filteredEntities().length, 22);
+  assert.equal(filteredEntities().length, 23);
   assert.equal(expression.x, -150);
   assert.equal(expression.y, 420);
 });
@@ -269,7 +274,7 @@ test('graph zoom preserves the world point under the cursor and clamps its scale
   assert(Math.abs((150 - browser.state.cameraY) / browser.state.zoom - 180) < 1e-9);
 });
 
-test('USG separates reconciled Code Facts from the user-facing Semantic Graph', () => {
+test('USG separates reconciled Code Facts from the user-facing Semantic Code Graph', () => {
   const specification = context.window.CODE_GRAPH_SOURCE;
   const architecture = specification.split('#### USG Layer Boundaries')[1].split('Analysis reads source text')[0];
   assert(architecture.includes('The boundary is between analysis facts and a user-facing semantic projection, not between syntax and semantics'));
@@ -280,12 +285,11 @@ test('USG separates reconciled Code Facts from the user-facing Semantic Graph', 
   assert(architecture.includes('completion of jobs does not imply semantic completeness'));
   assert(architecture.includes('already supported cross-project facts need not wait for all projects'));
   assert(architecture.includes('replacing a previous result MUST NOT leave stale selected targets'));
-  assert(architecture.includes('These projection categories do not change the Code Facts schema'));
   assert(architecture.includes('not the two-layer architecture'));
   const names = [...specification.matchAll(/^### (\w+)$/gm)].map(match => match[1]);
-  assert.equal(names.length, 22);
+  assert.equal(names.length, 23);
   for (const name of ['Reference', 'Resolution', 'ImplementationSet', 'CallProfile']) assert(!names.includes(name));
-  for (const name of ['Module', 'Unit', 'Member', 'Resource']) {
+  for (const name of ['Module', 'Namespace', 'Unit', 'Member']) {
     assert(names.includes(name));
     assert(!(name in model), 'Projection categories do not become Code Facts fixture categories');
   }
@@ -1059,7 +1063,7 @@ test('the offline specification and teaching schema match the sole specification
   const specification = readFileSync(new URL('Code Graph Data Model v2.md', import.meta.url), 'utf8');
   assert.equal(context.window.CODE_GRAPH_SOURCE, specification);
   const names = [...specification.matchAll(/^### (\w+)$/gm)].map(match => match[1]);
-  assert.equal(names.length, 22);
+  assert.equal(names.length, 23);
   assert.equal(new Set(names).size, names.length);
   for (const category of Object.keys(model)) assert(names.includes(category), `Unknown category: ${category}`);
   assert(!('CodeDataset' in model));
@@ -1541,8 +1545,8 @@ test('semantic guide renders all direct edge labels as source-node excerpts with
   assert(projection.includes('OVERRIDES'));
   assert(projection.includes('not overloading') || projection.includes('never overloading'));
   const spec = context.window.CODE_GRAPH_SOURCE;
-  const projectionSpec = spec.split('## 15. Semantic Graph')[1];
-  for (const [layerSpec, rendered] of [[spec.split('## 15. Semantic Graph')[0], facts], [projectionSpec, projection]]) {
+  const [factSpec, projectionSpec] = spec.split('## 15. Semantic Code Graph');
+  for (const [layerSpec, rendered] of [[factSpec, facts], [projectionSpec, projection]]) {
     const rows = layerSpec.split('\n').map(line => line.split('|').slice(1, -1).map(cell => cell.replace(/[`*]/g, '').trim()))
       .filter(cells => cells.length === 4 && /^[A-Z][A-Z_]+$/.test(cells[0]) && cells[1].includes('->'));
     assert(rows.length > 0);

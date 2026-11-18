@@ -1,34 +1,34 @@
-# Unified Software Graph: Code Facts and Semantic Graph
+# Unified Software Graph: Code Facts and Semantic Code Graph
 
 ## 1. Purpose and Conventions
 
-This specification defines both layers of the **Unified Software Graph (USG)**, targeting a Neo4j property graph. **Code Facts** preserves observed syntax and supported semantic facts independently of programming language and parser. **Semantic Graph** projects those facts into user-facing code organization and dependencies. Sections 2-14 define the supporting Code Facts contract; section 15 defines the Semantic Graph schema and its mapping rules. Repository, Project, ExternalLibrary, and Directory are shared nodes, not copies per layer.
+This specification defines both layers of the **Unified Software Graph (USG)**, targeting a Neo4j property graph. **Code Facts** preserves observed syntax and supported semantic facts independently of programming language and parser. **Semantic Code Graph** projects those facts into user-facing code organization and dependencies. Sections 2-14 define the supporting Code Facts contract; section 15 defines the Semantic Code Graph schema and its mapping rules. Repository, Project, Directory, ProjectFile, and Resource are shared nodes, not copies per layer.
 
 #### USG Layer Boundaries
 
 | USG Layer | Responsibility | Primary Concepts |
 | --- | --- | --- |
 | Code Facts | Preserve source observations, logical identities, contextual semantic results, evidence, and explicit uncertainty. | Symbol is the central logical code identity; Declaration, Expression, TypeUse, direct binding relationships, types, and project/source records retain the supporting detail. |
-| Semantic Graph | Present repository structure and meaningful containment, imports, calls, and other relationships to users, derived from Code Facts with traceable support. | Module, Unit, Member, Resource, plus shared Repository, Project, ExternalLibrary, Directory. Projection-specific nodes are not additional Code Facts categories. |
+| Semantic Code Graph | Present repository structure and meaningful containment, imports, calls, and other relationships to users, derived from Code Facts with traceable support. | Module, Namespace, Unit, and Member, plus shared Repository, Project, Directory, ProjectFile, and Resource. Projection-specific nodes are not additional Code Facts categories. |
 
-The boundary is between analysis facts and a user-facing semantic projection, not between syntax and semantics. Code Facts includes semantic information such as types, name and overload binding, inheritance, overrides, and supported target candidates. A Symbol and its Declarations identify an entity and its occurrences; they do not by themselves identify which entity a particular source name or call denotes in a Project. The Semantic Graph MUST NOT reconstruct bindings by matching names when Code Facts cannot establish them.
+The boundary is between analysis facts and a user-facing semantic projection, not between syntax and semantics. Code Facts includes semantic information such as types, name and overload binding, inheritance, overrides, and supported target candidates. A Symbol and its Declarations identify an entity and its occurrences; they do not by themselves identify which entity a particular source name or call denotes in a Project. The Semantic Code Graph MUST NOT reconstruct bindings by matching names when Code Facts cannot establish them.
 
-Direct binding results belong to Code Facts, whether produced during project analysis or later repository reconciliation. A source construct owns name-use details and contextual assessments; REFERS_TO and INVOKES connect it directly to selected, possible, or rejected Symbols. Optional POSSIBLE_IMPLEMENTATION relationships retain known definitions with an explicit completeness assessment. No separate call profile, reference-occurrence node, binding-result node, or implementation-set node is required. User-facing callable-to-callable edges, implementation summaries, and aggregated dependencies belong to the Semantic Graph and retain links to these occurrence-level facts. The second layer aggregates supported semantics; it does not invent missing bindings.
+Direct binding results belong to Code Facts, whether produced during project analysis or later repository reconciliation. A source construct owns name-use details and contextual assessments; REFERS_TO and INVOKES connect it directly to selected, possible, or rejected Symbols. Optional POSSIBLE_IMPLEMENTATION relationships retain known definitions with an explicit completeness assessment. No separate call profile, reference-occurrence node, binding-result node, or implementation-set node is required. User-facing callable-to-callable edges, implementation summaries, and aggregated dependencies belong to the Semantic Code Graph and retain links to these occurrence-level facts. The second layer aggregates supported semantics; it does not invent missing bindings.
 
-In Semantic Graph, a Module represents either a code file or a language-defined logical scope such as a namespace, package, or source-language module. A Unit represents a structural type; a namespace is not a Unit. A Member represents a significant contained callable or data entity. Resource represents an inventoried non-code file. Repository -> Project -> Module -> Unit -> Member is a navigation intention, not a universal containment invariant; section 15 defines shared files, cross-file namespaces, top-level members, and nested parameter mappings. These projection categories do not change the Code Facts schema.
+In Semantic Code Graph, a Module represents a language-defined module, not a code file by default. A Namespace represents a naming scope such as a C++ namespace or Java package. A Unit represents a structural type or a function or variable at namespace or module scope, including global scope. A Member represents a contained entity of a Unit, directly or through another Member. Resource classifies an inventoried non-code ProjectFile in both layers. File placement, module participation, and semantic ownership are independent.
 
-The syntactic/semantic conformance levels below are capabilities of Code Facts, not the two-layer architecture. The semantic-edge reference documents Code Facts relationships; it is distinct from the Semantic Graph schema in section 15. The teaching dependency views illustrate occurrence-backed projections, not an implementation of the complete second-layer store.
+The syntactic/semantic conformance levels below are capabilities of Code Facts, not the two-layer architecture. The semantic-edge reference documents Code Facts relationships; it is distinct from the Semantic Code Graph schema in section 15. The teaching dependency views illustrate occurrence-backed projections, not an implementation of the complete second-layer store.
 
 #### Repository Construction and Reconciliation
 
 1. Establish the repository's project inventory and select the source versions and Projects for a construction batch. Project discovery and job scheduling remain outside the canonical Code Facts schema.
 2. Analyze projects asynchronously and in parallel. Each producer emits available local syntax and semantic facts with collision-free identities, context, evidence, coverage, and explicit unresolved or provisional results. Independent workers MUST NOT merge symbols by spelling alone or create dangling cross-project references.
-3. Reconcile Code Facts across the repository: establish supported cross-project identities, bind references and calls against available project/dependency facts, and preserve unresolved candidates and failed or unsupported analysis boundaries. This is completion of the first layer, not construction of the Semantic Graph. Distinct contexts and incompatible results MUST NOT be collapsed.
-4. Build and publish the Semantic Graph from an identified, reconciled Code Facts snapshot. Repository-wide publication waits until every inventoried project's analysis job has reached a terminal state and reconciliation has run for that batch. A failed or unsupported project is explicitly incomplete, not an empty successfully analyzed project; completion of jobs does not imply semantic completeness.
+3. Reconcile Code Facts across the repository: establish supported cross-project identities, bind references and calls against available project/dependency facts, and preserve unresolved candidates and failed or unsupported analysis boundaries. This is completion of the first layer, not construction of the Semantic Code Graph. Distinct contexts and incompatible results MUST NOT be collapsed.
+4. Build and publish the Semantic Code Graph from an identified, reconciled Code Facts snapshot. Repository-wide publication waits until every inventoried project's analysis job has reached a terminal state and reconciliation has run for that batch. A failed or unsupported project is explicitly incomplete, not an empty successfully analyzed project; completion of jobs does not imply semantic completeness.
 
 Independent local bindings and already supported cross-project facts need not wait for all projects. Partial previews and incremental reconciliation MAY be produced as dependencies become available, but MUST be marked partial and MUST NOT be published as a complete repository graph. Every published projection MUST identify its input fact snapshot, preserve effective contexts, evidence, and uncertainty, and avoid mixing incompatible source versions or analysis batches. Later changes require reconciliation and rebuilding affected projections; replacing a previous result MUST NOT leave stale selected targets or derived relationships active. Publication boundaries and worker/job state are orchestration concerns, not new canonical nodes or properties defined here.
 
-Repository reconciliation MAY enrich Code Facts only with supported analysis results and their evidence. Semantic Graph grouping, display names, aggregation, and navigation MUST NOT be written back as newly observed source facts. Neither an analysis job barrier nor a finished reconciliation establishes every runtime target or the availability of external implementations.
+Repository reconciliation MAY enrich Code Facts only with supported analysis results and their evidence. Semantic Code Graph grouping, display names, aggregation, and navigation MUST NOT be written back as newly observed source facts. Neither an analysis job barrier nor a finished reconciliation establishes every runtime target or the availability of external implementations.
 
 Analysis reads source text without modifying it or producing transformed source files. Source transformation and mappings between transformed and original text are outside the scope of this model.
 
@@ -48,7 +48,7 @@ Some tables and the offline teaching fixture retain portable `_id`, `_ids`, or o
 4. Names are stored in symbols, coordinates on source occurrences, and type structures in type entities. Source constructs own binding assessments and direct targets; analysis steps are not mandatory fact nodes.
 5. The same information is not exported simultaneously as a nested object, duplicated attributes, and an independent graph edge.
 6. Unknown, ambiguous, and incomplete information is represented as data states, not as grounds for selecting an arbitrary target.
-7. Repository-wide identity and binding reconciliation enriches Code Facts; user-facing grouping and dependency aggregation constructs the Semantic Graph. Semantic analysis is not deferred wholesale to the second layer.
+7. Repository-wide identity and binding reconciliation enriches Code Facts; user-facing grouping and dependency aggregation constructs the Semantic Code Graph. Semantic analysis is not deferred wholesale to the second layer.
 
 ## 3. Common Types and Identity
 
@@ -186,6 +186,21 @@ A project file, whether source code, an included header, an imported file, a des
 Within one dataset there MUST be at most one file or directory node per normalized location and category. Symlink aliases MUST NOT be silently conflated or recursively followed into cycles. Shared files and directories use the same nodes with membership in multiple projects, rather than copies per project. File content is not stored in the graph. `content_ref` MUST resolve to an immutable or explicitly versioned external document for the represented repository revision; an unversioned mutable URL is insufficient for source coordinates. External storage defines its locator format and preserves the UTF-8 text against which offsets were measured. Elasticsearch is one possible backend, not a required dependency. Inventory-only files need not have stored content. The `generated` origin denotes inputs generated before analysis, not text generated by this model.
 
 SourceSpan is an embedded coordinate value attached to a fact, evidence entry, or diagnostic, never a graph node or a standalone relationship target. Its file endpoint is the actual ProjectFile. Native scalar coordinates use the incoming file relationship as their source-version anchor: IMPORTS for Import, ANNOTATES for Annotation, and CONSISTS_OF for Declaration, Expression, and TypeUse. Do not add a reverse LOCATED_IN copy. Diagnostic retains LOCATED_IN for its primary location. Symbol locations are obtained through HAS_DECLARATION and the declaration's file membership; a logical symbol can have several written occurrences.
+
+### Resource
+
+An inventoried non-code artifact, such as a descriptor, configuration, document, image, or binary asset. Resource and its ProjectFile are shared across both layers. ProjectFile is the file identity and sole owner of its URI, content reference, and physical placement; Resource adds a classification, not a second file record.
+
+| Attribute | Type | Purpose |
+| --- | --- | --- |
+| `kind` ! | `descriptor`, `configuration`, `documentation`, `image`, `binary`, `other` | Supported non-code classification under the inventory policy. |
+| `media_type` ? | MIME type | Observed media type, when known. |
+
+| Edge | Source -> target | Edge Properties | Meaning |
+| --- | --- | --- | --- |
+| `CLASSIFIES` | Resource -> ProjectFile | None. | Exactly one backing file per Resource and at most one Resource per file in the same snapshot. Traverse the file's CONTAINS edges for project membership and directory placement. |
+
+Resource identity is based on the backing file. Generated non-code artifacts may be Resources; generated code is not a Resource merely because it was generated. Unknown classifications remain unclassified. Resource access is not inferred from matching string literals.
 
 ### ExternalLibrary
 
@@ -746,7 +761,7 @@ Ownership, declarations, operands, HAS_TYPE edges, references, and the selected 
 
 ## 10. Structural Dependency Graph
 
-This section defines the boundary and fidelity requirements for projections from Code Facts, not additional canonical fact entities or the final Semantic Graph schema. The existing offline views illustrate such projections. User-facing repository/module/unit/member organization and its relationship contract will be specified separately after the Code Facts model is settled. Repository-wide projections consume reconciled fact snapshots as described in section 1.
+This section defines fidelity requirements for dependency projections from Code Facts, not additional canonical fact entities. The offline views illustrate such projections; section 15 defines the Semantic Code Graph schema. Repository-wide projections consume reconciled fact snapshots as described in section 1.
 
 Structural dependencies are derived from direct INVOKES, REFERS_TO, POSSIBLE_IMPLEMENTATION, import, HAS_TYPE, and semantic relationships. Occurrence-level INVOKES is a Code Fact; callable-to-callable and component-level call links are projections. A selected target establishes a declaration-level relationship; other applicable or unknown candidates remain possible. Rejected targets do not produce dependencies. Known definitions do not claim execution.
 
@@ -906,7 +921,7 @@ Evidence, Coverage and Diagnostic have distinct lifecycles but are published con
 
 ## 14. Conformance Levels
 
-Both levels below describe Code Facts capabilities. A semantic-conformant fact dataset is still the first USG layer, not a Semantic Graph dataset. Repository batch completion, fact conformance, assessed semantic completeness, and second-layer publication are separate claims.
+Both levels below describe Code Facts capabilities. A semantic-conformant fact dataset is still the first USG layer, not a Semantic Code Graph dataset. Repository batch completion, fact conformance, assessed semantic completeness, and second-layer publication are separate claims.
 
 **Project structure** is available before code analysis. It MUST contain repository identity, one project per recognized descriptor in the assessed area, file and directory inventory with membership, known external libraries, supported project dependencies, evidence, coverage, and diagnostics for incomplete areas. A complete claim requires complete coverage for projects, files, project dependencies, and external libraries within the stated boundaries. Project structure alone does not claim syntactic or semantic code conformance. Both code conformance levels require descriptor-based Project boundaries for their project build metadata; projects or descriptors MUST NOT be fabricated for unattached source files. Discovery configuration and its external storage are outside the scope of this model.
 
@@ -920,11 +935,11 @@ Both levels MAY additionally preserve known call-occurrence conditions; semantic
 
 Each analysis tool declares its achieved level and coverage of individual areas. The presence of a syntax tree is not evidence of semantic completeness. Sufficiency is determined by model integrity, completeness of the required entities, and the authority of specific relationships, not by serialization format.
 
-## 15. Semantic Graph
+## 15. Semantic Code Graph
 
-Semantic Graph is the user-facing projection of an identified reconciled Code Facts snapshot. It adds exactly four node categories: Module, Unit, Member, and Resource. Repository, Project, ExternalLibrary, and Directory are shared with Code Facts, retaining the same identities, properties, and structural relationships. They are not cloned or assigned a second canonical identity. ProjectFile, Symbol, declarations, expressions, types, and quality records remain Code Facts; cross-layer provenance connects them to the projection.
+Semantic Code Graph is the user-facing projection of an identified reconciled Code Facts snapshot. It adds exactly four node categories: Module, Namespace, Unit, and Member. Repository, Project, Directory, ProjectFile, and Resource retain the same identities, properties, and structural relationships in both layers. ExternalLibrary, Symbol, declarations, expressions, types, and quality records remain Code Facts; cross-layer provenance connects the projection to its supporting facts.
 
-Every projection node has a required stable `id` distinct from the source fact IDs, a required `name` (observed name or explicit display fallback for anonymous constructs), and an optional `qualified_name` when established. Identity MUST be derived from established file or Symbol identity and the projection category, never from display names alone. Shared Symbols across declarations produce one projected identity, not one node per declaration. Provisional identities remain distinct until supported reconciliation; they MUST NOT be merged by spelling. External types and members MAY be projected from known external Symbols without fabricated source files or declarations.
+Every projection-only node has a required stable `id` distinct from source fact IDs, a required `name` (observed name or explicit display fallback), and an optional `qualified_name` when established. Identity MUST be based on the projection category and supporting facts under the applicable language rules, never on display names alone. Reconciled identities across declarations produce one projected node. Provisional identities MUST NOT be merged by spelling. Known external entities MAY be projected without fabricated files or declarations.
 
 #### Projection Context and Provenance
 
@@ -938,51 +953,56 @@ Aggregate by source, target, relation kind, effective context, and compatible ap
 
 ### Module
 
-A logical code-organization boundary: either a code file (`.java`, `.cpp`, header, script, etc.) or a language-defined namespace, package, or module. This is not a build target, descriptor-based Project, arbitrary directory group, or Code Facts Symbol category. File and logical Modules remain distinguishable even when their names match.
+A language-defined module, typically an importable code boundary. Module identity, membership, and importability depend on the language, its version, and effective resolution settings. A Module can correspond to one file, span multiple files, or have no inventoried file. It is not automatically a ProjectFile, Namespace, Directory, or build target.
 
 | Attribute | Type | Purpose |
 | --- | --- | --- |
-| `kind` ! | `file`, `namespace`, `package`, `language_module` | Distinguish physical code files from logical scopes. |
-| `language` ? | Language identifier | Established source language; unknown remains absent. |
+| `language` ! | Language identifier | Language whose module rules apply. |
+| `language_version` ? | String | Established effective version; retain the project context and supporting language settings. |
+| `kind` ! | Language-qualified identifier | For example `java.named_module`, `cpp.named_module`, `cpp.partition`, `cpp.header_unit`, `python.module`, `python.package`, or `javascript.esm`. |
 
-A file Module maps to one code-bearing ProjectFile. A logical Module maps to one reconciled namespace/module Symbol; it MAY span several files and directories. Language package identity MUST be supported by language facts, not inferred from directory spelling alone. The code-bearing classification policy MUST be explicit: `origin: generated` does not mean non-code, and an unavailable parser does not turn a known code file into a Resource. Unknown classifications remain unprojected with incomplete coverage.
+| Language | Mapping rules |
+| --- | --- |
+| Java 9+ | JPMS named modules follow module descriptors or resolved automatic-module identity; an unnamed module is scoped by its runtime/analyzer context, not repository-wide. `requires` can establish Module IMPORT Module. A Java package is a Namespace; a type import does not by itself establish a JPMS dependency. |
+| C++20+ | Use supported named module, partition, and header-unit identities. Multiple module units can contribute to one named module; distinct importable partitions remain distinct. `import` and `export import` can establish IMPORT. A textual `#include` does not by itself establish a module or module import. |
+| Python | Resolve modules and packages using the effective interpreter and import paths. A regular module can be backed by one file or an extension; regular packages can have an initializer, and namespace packages can span multiple directories without one. A Python namespace package is a Module here, not a Java/C++-style Namespace. |
+| JavaScript / TypeScript | Use resolved module identity and the applicable module format, host, and compiler settings. ES modules and supported CommonJS modules may correspond to files. Specifier aliases and package exports affect resolution, not identity by themselves; an established ambient module can lack an implementation file. A non-module script is not promoted to a Module. |
 
-Project CONTAINS includes a Module only with supported membership in that project. Directory CONTAINS includes a file Module only for its immediate physical directory. A logical Module has no single fabricated directory parent; file participation uses DECLARES. Nested logical Modules use CONSISTS_OF. A file with no language scope MAY directly own top-level Units and Members. If a logical owner is established, that owner supplies CONSISTS_OF; the file records written participation with DECLARES instead of becoming a second semantic owner.
+Project CONTAINS records supported module participation, not ownership. ProjectFile DECLARES records supported source participation, which does not imply a file-to-module bijection. A resolved module boundary may be backed by a Symbol, ProjectFile, or other exact supporting facts. Same-spelled modules in different resolution scopes are not merged without evidence.
+
+### Namespace
+
+A language-defined naming scope, separate from a Module: a C++ namespace (including global and anonymous scopes) or a Java package (including the unnamed package). One Namespace may be linked to many ProjectFiles and one file may contribute to many Namespaces. A directory name is not evidence of namespace identity.
+
+| Attribute | Type | Purpose |
+| --- | --- | --- |
+| `kind` ! | `cpp_namespace`, `cpp_global`, `cpp_anonymous`, `java_package`, `java_unnamed_package` | Language-specific scope category. |
+
+Named scopes follow reconciled language identity, including package/module boundaries where relevant. Global scopes, anonymous namespaces, and unnamed packages use their actual language-defined identity and effective scope, supported by source or scope facts when there is no explicit namespace declaration. Do not merge unrelated anonymous or unnamed scopes by display name. Namespace nesting uses CONSISTS_OF only when the language establishes it; dotted Java package names do not establish ownership.
 
 ### Unit
 
-A structural type, not a file, namespace, build unit, or arbitrary symbol grouping. Examples include classes, interfaces, enums, structs, records, unions, traits, annotation types, and language-specific structural types. An annotation application remains a Code Facts Annotation, not a Unit.
+A structural type or a function or variable declared or defined at namespace, global, or module scope, outside a type or callable. Examples include classes, interfaces, enums, structs, records, unions, traits, annotation types, free functions, and namespace-scope variables. An annotation application remains a Code Facts Annotation, not a Unit.
 
 | Attribute | Type | Purpose |
 | --- | --- | --- |
-| `kind` ! | `class`, `interface`, `enum`, `struct`, `record`, `union`, `trait`, `annotation_type`, `language_specific`, `unknown` | Type category mapped from supported TypeProfile and Symbol facts. |
+| `kind` ! | `class`, `interface`, `enum`, `struct`, `record`, `union`, `trait`, `annotation_type`, `function`, `variable`, `language_specific`, `unknown` | Entity category mapped from supported Symbols, declarations, and profiles. |
 
-One Unit maps to one type Symbol, including all its declarations, partial definitions, and out-of-class member definitions. Nested types use Unit CONSISTS_OF Unit. Forward declarations do not produce duplicate Units. Generic instances MUST NOT become invented declared Units: follow TypeExpression to the established type Symbol and retain substitutions in supporting facts. A type alias is not automatically a new structural type; retain its alias support when resolving the represented type.
+One Unit maps to one reconciled Symbol, not one node per declaration. The semantic owner, not the physical location, determines classification: an out-of-class definition of a method or static field is still a Member of its type. Nested structural types remain Units, connected by Unit CONSISTS_OF Unit. An established Namespace owns its immediate Units; otherwise an established Module may own its immediate Units. If neither applies, ProjectFile DECLARES still records written participation. Generic instances and type aliases do not automatically create new structural Units; resolve through TypeExpression and retain substitutions and alias support.
 
 ### Member
 
-A significant callable or data entity owned by a Module, Unit, or another Member. Methods, constructors, functions, fields, properties, parameters, enum constants, and type parameters are included when supported. Local variables, lambdas, and local functions MAY be included under a declared mapping policy. Expressions, argument occurrences, and name-use occurrences do not each become Members.
+A significant callable or data entity nested inside a Unit, directly or through another Member. Methods, constructors, fields, properties, parameters, enum constants, and type parameters are included when supported. Local variables, lambdas, and local functions MAY be included under a declared mapping policy. A Namespace or Module never directly owns a Member. Expressions, argument occurrences, and name-use occurrences do not each become Members.
 
 | Attribute | Type | Purpose |
 | --- | --- | --- |
 | `kind` ! | `method`, `function`, `constructor`, `destructor`, `operator`, `field`, `property`, `parameter`, `variable`, `enum_value`, `type_parameter`, `lambda`, `language_specific`, `unknown` | Language-aware entity category supported by Symbol, profiles, and declarations. |
 
-One Member maps to one reconciled callable/data Symbol, not its spelling or each Declaration. Overloads remain separate Members with distinct Symbol identities. Parameters belong to their callable Member, not directly to its Unit or namespace. A namespace-level variable is a Member; a function parameter is not a namespace-level variable. Anonymous callables without a Symbol MAY use their established callable Declaration identity. Uses inside a lambda/local function belong to that callable; if it is excluded, do not silently attribute its body dependencies to the enclosing callable. Initializers outside callables belong to their actual data Member when supported, never an invented executing method.
+One Member maps to one reconciled callable/data Symbol, or an established callable Declaration for an anonymous callable without a Symbol. Overloads remain separate identities. Parameters belong to the callable that declares them, whether a free-function Unit or a callable Member. Uses inside a lambda/local function belong to that callable; if excluded, do not attribute its body dependencies to the enclosing callable. Initializers belong to their actual data Unit or Member, never an invented executing method.
 
-### Resource
+#### Semantic Code Graph Relationships
 
-An inventoried non-code project file: configuration, documentation, images, binary assets, descriptors, and other non-code inputs. It projects an existing ProjectFile; it is not a second file fact or an external content store.
-
-| Attribute | Type | Purpose |
-| --- | --- | --- |
-| `kind` ! | `descriptor`, `configuration`, `documentation`, `image`, `binary`, `other` | Supported non-code classification under the published mapping policy. |
-| `media_type` ? | MIME type | Observed media type, when known. |
-
-For one snapshot and classification policy, a ProjectFile MUST NOT produce both a file Module and a Resource. Resource name, URI, and content access are traced to ProjectFile; do not copy source content into the graph. Generated code is a Module; a generated non-code asset may be a Resource. Embedded code in a resource does not create a fictitious physical file Module. No resource access is inferred merely from a matching string literal; resource use requires separately supported resolution and an explicitly documented extension relationship.
-
-#### Semantic Graph Relationships
-
-The following are direct directed Neo4j relationships, without canonical edge IDs or intermediate relationship nodes. All derived rows obey the context and provenance contract above. Identically named relationships in Code Facts and Semantic Graph are distinguished by endpoint categories. Shared structural edges retain their original contract.
+The following are direct directed Neo4j relationships, without canonical edge IDs or intermediate relationship nodes. All derived rows obey the context and provenance contract above. Identically named relationships in Code Facts and Semantic Code Graph are distinguished by endpoint categories. Shared structural edges retain their original contract.
 
 | Edge | Source -> target | Edge Properties | Meaning |
 | --- | --- | --- | --- |
@@ -990,45 +1010,45 @@ The following are direct directed Neo4j relationships, without canonical edge ID
 | `PARENT_OF` | Project -> Project | Existing structural contract. | Shared project discovery hierarchy, not a dependency. |
 | `PARENT_OF` | Directory -> Directory | Existing structural contract. | Shared immediate physical directory parent. |
 | `CONTAINS` | Project -> Directory | Existing structural contract. | Shared explicit directory membership. |
-| `EXTERNAL` | Project -> ExternalLibrary | Existing structural contract. | Shared build-level library dependency. |
+| `CONTAINS` | Project -> ProjectFile | Existing structural contract. | Shared project inventory. |
+| `CONTAINS` | Directory -> ProjectFile | Existing structural contract. | Shared immediate physical placement. |
+| `CLASSIFIES` | Resource -> ProjectFile | Existing structural contract. | Shared non-code classification. |
 | `DEPENDS_ON` | Project -> Project | Existing structural contract. | Shared build dependency, distinct from Unit DEPENDS. |
-| `CONTAINS` | Project -> Module | `membership` ?: `physical`, `declared`, `both`. | Supported project membership; a shared file or scope may participate in several projects. |
-| `CONTAINS` | Directory -> Module | File Modules only. | Immediate physical parent of the supporting code file, not recursive logical ownership. |
-| `CONTAINS` | Project -> Resource | `membership` !: `physical`, `declared`, `both`; `is_descriptor` ?: Boolean. | Project inventory membership projected from the existing file relationship. |
-| `CONTAINS` | Directory -> Resource | Common derived properties. | Immediate physical parent of the supporting non-code file. |
-| `IMPORTS` | Module -> Module | `form` ?, `is_reexport` ?. | Supported import/include provider projected from Import IMPORTS_FROM and its context; file targets map to file Modules, logical providers to logical Modules. |
-| `IMPORTS` | Module -> ExternalLibrary | `form` ?, `is_reexport` ?. | An actual import resolves to this library through established provider/artifact ownership, not merely a Project EXTERNAL dependency. |
-| `CONSISTS_OF` | Module -> Module | Logical nesting only. | Immediate semantic nesting of namespace/package/module scopes, never arbitrary file grouping. |
-| `CONSISTS_OF` | Module -> Unit | Common derived properties. | Immediate semantic type ownership. |
-| `CONSISTS_OF` | Module -> Member | Common derived properties. | Immediate top-level function or data ownership. |
-| `DECLARES` | Module -> Module | File source, logical target only. | Written namespace/package/module participation; permits a logical scope to span files. |
-| `DECLARES` | Module -> Unit | File Modules only. | The file contains a declaration/definition of a logically owned type. |
-| `DECLARES` | Module -> Member | File Modules only. | The file contains a declaration/definition of a Member owned by a logical scope or type, including out-of-class definitions. |
+| `CONTAINS` | Project -> Module | Common derived properties. | Supported module participation in a project. |
+| `IMPORT` | Module -> Module | `form` ?, `is_reexport` ?. | A supported direct language-level module import or equivalent such as JPMS requires. |
+| `DECLARES` | ProjectFile -> Module | Common derived properties. | File provides or contributes to the module under language rules. |
+| `DECLARES` | ProjectFile -> Namespace | Common derived properties. | File declares, defines, or contributes to the scope, including implicit scopes. |
+| `DECLARES` | ProjectFile -> Unit | Common derived properties. | File contains a declaration or definition of the Unit. |
+| `DECLARES` | ProjectFile -> Member | Common derived properties. | File contains a declaration or definition of the Member, including out-of-class definitions. |
+| `CONTAINS` | Module -> Namespace | Common derived properties. | Supported scope participation, not semantic ownership or a claim that the scope belongs exclusively to this module. |
+| `CONSISTS_OF` | Namespace -> Namespace | Common derived properties. | Immediate language-defined namespace nesting. |
+| `CONSISTS_OF` | Namespace -> Unit | Common derived properties. | Immediate ownership by a naming scope. |
+| `CONSISTS_OF` | Module -> Unit | Common derived properties. | Immediate module ownership when no Namespace owns the Unit. |
 | `CONSISTS_OF` | Unit -> Unit | Common derived properties. | Immediate nested-type ownership. |
-| `DEPENDS` | Unit -> Unit | `reason` !: `field_type`, `parameter_type`, `return_type`, `type_constraint`, `declaration_type`. | A supported declaration/signature refers to the target structural type, including through composite types. Not inferred from every body call or transitively through dependencies. |
+| `DEPENDS` | Unit -> Unit | `reason` !: `field_type`, `parameter_type`, `return_type`, `type_constraint`, `declaration_type`. | A type, function, or variable Unit has a supported declaration/signature dependency on a structural type Unit, including through composite types. Not inferred from body calls or transitive dependencies. |
 | `IMPLEMENTS` | Unit -> Unit | Substitutions and language-specific details when supported. | Source type implements a target interface/trait contract, derived from Code Facts IMPLEMENTS. |
 | `INHERITANCE` | Unit -> Unit | Visibility, virtual-base flag, substitutions when supported. | Source subtype derives from target base type, mapped from Code Facts INHERITS; excludes separate IMPLEMENTS classification unless both facts are established. |
 | `CONSISTS_OF` | Unit -> Member | Common derived properties. | Immediate member ownership, including method declarations as well as definitions. |
 | `DECLARES` | Unit -> Member | Common derived properties. | A required callable contract declared by an interface or abstract type; supplements ownership and does not mean implementation. |
 | `CONSISTS_OF` | Member -> Member | `position` ? for ordered parameters. | Callable parameters, supported local callables, and other immediate nested members; no flattened duplicate ownership. |
-| `INVOKES` | Member -> Member | Call kind and per-occurrence conditions when supported. | An actual call occurrence in the source binds to the target callable; static dependency, not proof of execution or a concrete runtime implementation. |
-| `ACCESSES` | Member -> Member | `access` !: `read`, `write`, `read_write`, `unknown`. | A supported reference to a field, property, parameter, or variable; distinguish data access from passing/calling a callable. |
-| `USES` | Member -> Member | `usage` !: `callable_reference`, `address`, `capture`, `other`. | Non-invoking callable reference, method reference, function address, or explicit capture. An actual call inside a lambda is INVOKES from that lambda, not USES merely because it is nested. |
+| `INVOKES` | Unit or Member -> Unit or Member | Call kind and per-occurrence conditions when supported. | A supported call in a callable body or data initializer binds to a callable target; not proof of execution. |
+| `ACCESSES` | Unit or Member -> Unit or Member | `access` !: `read`, `write`, `read_write`, `unknown`. | A supported reference to a data target, including a namespace-scope variable Unit or a parameter Member. |
+| `USES` | Unit or Member -> Unit or Member | `usage` !: `callable_reference`, `address`, `capture`, `other`. | A non-invoking reference to a callable or data entity. An actual call inside a lambda is INVOKES from that lambda. |
 | `OVERRIDE` | Member -> Member | Common derived properties. | Source callable overrides target inherited callable, mapped from Code Facts OVERRIDES. This is overriding, not overloading. |
 | `IMPLEMENTS` | Member -> Member | Common derived properties. | Source callable fulfills a target abstract/interface callable contract, only when supported by language semantics and contract evidence. |
-| `DERIVED_FROM` | Module -> ProjectFile or Symbol | Common derived properties. | Cross-layer identity and source support; code file or reconciled logical scope respectively. |
-| `DERIVED_FROM` | Unit -> Symbol | Common derived properties. | Cross-layer structural type identity. |
+| `DERIVED_FROM` | Module -> Symbol, ProjectFile, or ExternalLibrary | Common derived properties. | Cross-layer module identity and source or established external artifact support. |
+| `DERIVED_FROM` | Namespace -> Symbol, Declaration, or ProjectFile | Common derived properties. | Cross-layer scope identity and support, including implicit scopes. |
+| `DERIVED_FROM` | Unit -> Symbol | Common derived properties. | Cross-layer structural type, callable, or data identity. |
 | `DERIVED_FROM` | Member -> Symbol or Declaration | Common derived properties. | Cross-layer entity identity; Declaration is the fallback for supported anonymous callables without a Symbol. |
-| `DERIVED_FROM` | Resource -> ProjectFile | Common derived properties. | Cross-layer non-code file identity. |
 
-CONSISTS_OF records immediate semantic ownership and MUST be acyclic. A canonical projected entity has at most one immediate semantic owner per compatible context; Module DECLARES records physical participation without introducing a second semantic owner. Project/Directory CONTAINS records membership or placement, not semantic ownership. Shared nodes may connect directly to Code Facts and Semantic Graph endpoints in the same graph. Derived provenance links and existing shared identities provide cross-layer navigation without copying source nodes.
+CONSISTS_OF records immediate semantic ownership and MUST be acyclic. A canonical projected entity has at most one immediate semantic owner per compatible context; every Member has an ownership path to a Unit. DECLARES records file participation without introducing another semantic owner. CONTAINS records membership or placement, not semantic ownership. Shared nodes connect directly to both layers without copying source nodes.
 
-Imports MUST NOT be guessed from method calls, matching names, or shared folders. Map an Import to its nearest established logical owner, otherwise its file Module; do not emit both as duplicate imports by default. Import of an external symbol is linked to ExternalLibrary only when artifact ownership is established. Unresolved imports retain their Code Facts assessments and incomplete projection coverage, not fabricated Module targets.
+IMPORT requires established or candidate module endpoints supported by the actual import site, resolution, and language rule in its effective context. Use Import IMPORTS_FROM or equivalent evidence such as a resolved JPMS directive. A file target maps to a Module only if that file is a supported module provider. Imports in non-module files, textual includes, build dependencies, and unresolved providers remain available as Code Facts; they do not justify inventing a Module or an IMPORT edge.
 
 ACCESSES and USES require supported REFERS_TO/name-use roles, captures, or equivalent authoritative facts. An unclassified data reference may use `access: unknown`; unsupported roles MUST NOT be guessed. A lambda capturing a field may contribute USES for the capture and ACCESSES for a separate body read when both facts exist. Do not duplicate one ordinary call reference as USES. OVERRIDE and Member IMPLEMENTS MAY coexist when the language proves both; neither follows from equal names, overload signatures, or type-level IMPLEMENTS alone. Code Facts has no mandatory dedicated member-implementation edge: derive it only from an established override/contract mapping with abstract/interface target evidence, otherwise omit it and declare the coverage gap. No OVERLOAD relationship is required: overloads are distinct callable identities in one language-defined overload set.
 
 #### Mapping Example
 
-In a Java project, `src/demo/Service.java` produces a file Module and its `package demo` contributes to the logical Module for `demo`. The shared Directory CONTAINS the file Module; Project CONTAINS both participating Modules. The file Module DECLARES the logical Module and the `Service` Unit. The logical Module CONSISTS_OF Service. The Unit CONSISTS_OF its `run` Member; `run` CONSISTS_OF its parameter Member. `config.json` produces a Resource with Project and Directory CONTAINS relationships, and DERIVED_FROM its inventoried ProjectFile.
+In Java 9+, `module-info.java` can declare the `demo.app` Module. A resolved `requires demo.lib` yields `demo.app` IMPORT `demo.lib`. `Service.java` and `Helper.java` can both DECLARE the same `demo` Namespace without being Modules. The Namespace CONSISTS_OF its `Service` Unit; `Service` CONSISTS_OF its `run` Member. A Resource CLASSIFIES the inventoried `config.json` ProjectFile, whose project and directory membership is shared.
 
-If `Service implements Runnable`, Service IMPLEMENTS Runnable only with supported type facts. Its `run` Member IMPLEMENTS the abstract `Runnable.run` contract only with the corresponding member-level proof; OVERRIDE may also apply under that language's rules. A call to `helper()` inside `run` yields run INVOKES helper. Reading the parameter yields run ACCESSES parameter (`read`). Passing `helper` as a callable reference yields USES, not INVOKES at that reference site. All dependencies retain supporting occurrences and context; none states that the program actually executes them.
+In C++20, a module interface importing `engine` yields IMPORT to the `engine` Module only when the provider resolves. A header and an ordinary source file may both DECLARE the same C++ Namespace without being Modules. A free function `tick(int step)` and a namespace-scope variable `frame` are Units; `step` is a Member of `tick`. Calling `tick` from a method yields Member INVOKES Unit; reading `frame` inside `tick` yields Unit ACCESSES Unit. All dependencies retain supporting occurrences and context; none proves runtime execution.
