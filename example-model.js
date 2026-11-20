@@ -149,7 +149,7 @@ int main() {
   const model = Object.fromEntries([
     'Repository', 'Project', 'Directory', 'ProjectFile',
     'Symbol', 'Declaration', 'TypeProfile', 'CallableProfile', 'ParameterProfile',
-    'Import', 'Expression', 'TypeExpression', 'TypeUse', 'Coverage', 'Diagnostic'
+    'Import', 'Expression', 'TypeExpression', 'TypeUse', 'Diagnostic'
   ].map(category => [category, []]));
   const symbolProfiles = new Set(['CallableProfile', 'ParameterProfile', 'TypeProfile']);
   const add = (category, record) => {
@@ -158,11 +158,6 @@ int main() {
     return record;
   };
   const contextual = record => ({ ...record, project_id: projectId });
-  const coverage = (id, subject, dimension, state, reasons = [], excluded = [], attributePath) => {
-    const record = { id, subject_id: subject, dimension, state, reason_codes: reasons, excluded_spans: excluded,
-      ...(attributePath ? { attribute_path: attributePath } : {}) };
-    return add('Coverage', ['projects', 'files', 'project_dependencies', 'external_libraries'].includes(dimension) ? record : contextual(record));
-  };
   const evidence = (key, subject, supporting, detail, spans = [], method = 'manual') => {
     const source = Object.values(model).flat().find(record => record.id === subject);
     source.evidence ??= [];
@@ -194,14 +189,12 @@ int main() {
   }
   function recordBinding(source, siteKey, target, field, extra = {}) {
     source.binding_results ??= [];
-    const index = source.binding_results.length;
     source.binding_results.push(contextual({ site_key: siteKey, state: target ? 'resolved' : 'unsupported',
       candidate_set_completeness: target ? 'complete' : 'unknown', reason_codes: target ? [] : ['standard_library_binding_not_analyzed'] }));
     if (!target) return;
     source[field] ??= [];
     const edge = contextual({ site_key: siteKey, target_id: target, state: 'selected', applicability: 'applicable', reason_codes: [], ...extra });
     source[field].push(edge);
-    coverage(`coverage:${source.id}:${siteKey}`, source.id, field === 'invokes' ? 'calls' : 'references', 'complete', [], [], `binding_results[${index}]`);
     return edge;
   }
   function reference(id, site, range, role, target, qualification = 'unqualified') {
@@ -444,14 +437,12 @@ int main() {
       form: 'include', is_reexport: false, source_form: 'angle_header', path_segments: [header], bindings: [],
       binding_results: [contextual({ site_key: 'source', state: 'unsupported', candidate_set_completeness: 'unknown',
         reason_codes: ['header_contents_not_analyzed'] })] });
-    coverage(`coverage:include-${header}`, `import:${header}`, 'imports', 'unknown', ['header_contents_not_analyzed'], [], 'binding_results[0]');
   }
   add('Import', { id: 'import:Engine', ...containment('decl:main'), span: sourceSpan(within('using namespace Engine;', ranges.main)),
     form: 'using', is_reexport: false, source_form: 'qualified_name', path_segments: ['Engine'], bindings: [{ key: 'namespace', wildcard: true }],
     binding_results: [contextual({ site_key: 'source', state: 'resolved', candidate_set_completeness: 'complete', reason_codes: [] })],
     imports_from: [contextual({ target_id: 'symbol:Engine', site_key: 'source', state: 'established' })] });
   reference('reference:using-Engine', 'import:Engine', within('Engine', within('using namespace Engine;', ranges.main)), 'import', 'symbol:Engine');
-  coverage('coverage:using-Engine-source', 'import:Engine', 'imports', 'complete', [], [], 'binding_results[0]');
   evidence('using-Engine', 'import:Engine', ['symbol:Engine', 'inventory:descriptor'],
     { rule: 'The using directive names the Engine namespace in this analysis context.' },
     [sourceSpan(within('using namespace Engine;', ranges.main))], 'language_rules').attribute_path = 'imports_from[0]';
@@ -648,7 +639,6 @@ int main() {
     evidence(key, record.id, [target, 'inventory:descriptor'],
       { rule: 'Quoted include resolves to the checked-in teaching header through the engine target include directory.' },
       [sourceSpan(directive)], 'manual').attribute_path = 'imports_from[0]';
-    coverage(`coverage:${key}`, record.id, 'imports', 'complete', [], [], 'binding_results[0]');
   }
 
   const conditionalCalls = [];
@@ -670,7 +660,6 @@ int main() {
       [sourceSpan(statement)], 'syntax');
     conditionEvidence.authority = 'observed';
     conditionEvidence.attribute_path = 'condition';
-    coverage(`coverage:conditional-${key}`, invocation, 'calls', 'complete', [], [], 'condition');
     conditionalCalls.push({ call_id: invocation, condition_expression_id: conditionId, declaration_id: `decl:${key}` });
   }
   evidence('RenderContext-identity', 'symbol:RenderContext', ['decl:RenderContext-forward', 'decl:RenderContext', 'inventory:descriptor'],
@@ -685,39 +674,12 @@ int main() {
       'Supplied public type contracts: string is the standard alias, shared_ptr<T> has one type parameter, make_shared<T> returns shared_ptr<T>, get/operator-> return T*, move produces an rvalue reference.',
       'These limited contracts support illustrated types and receiver lookup, not a complete SDK overload analysis or prediction of execution.'
     ] });
-  const streamSpans = sceneCode.split('\n').filter(line => line.includes('std::cout')).map(line => sourceSpan(locate(line.trim())));
-  coverage('coverage:configuration', 'inventory:example', 'configuration', 'partial', ['sdk_search_paths_not_exported']);
-  coverage('coverage:projects', 'repository:example', 'projects', 'complete');
-  coverage('coverage:files', 'project:example', 'files', 'complete');
-  coverage('coverage:project-dependencies', 'project:example', 'project_dependencies', 'complete');
-  coverage('coverage:viewer-dependencies', 'project:viewer', 'project_dependencies', 'complete');
-  coverage('coverage:viewer-files', 'project:viewer', 'files', 'complete');
-  coverage('coverage:external-libraries', 'project:example', 'external_libraries', 'unknown', ['library_resolution_not_performed']);
-  coverage('coverage:syntax', 'inventory:example', 'syntax', 'partial', ['focused_teaching_projection'], streamSpans);
-  coverage('coverage:declarations', 'inventory:example', 'declarations', 'partial', ['project_declarations_only']);
-  coverage('coverage:calls', 'inventory:example', 'calls', 'partial', ['stream_operator_and_implicit_library_calls_omitted'], streamSpans);
-  coverage('coverage:types', 'inventory:example', 'types', 'partial', ['standard_library_internal_types_not_exported']);
-  coverage('coverage:imports', 'inventory:example', 'imports', 'partial', ['header_contents_not_analyzed']);
-  coverage('coverage:references', 'inventory:example', 'references', 'partial', ['focused_project_references_only'], streamSpans);
-  coverage('coverage:viewer-external-libraries', 'project:viewer', 'external_libraries', 'unknown', ['library_resolution_not_performed']);
-  for (const source of sources.slice(1)) {
-    const excluded = source.content.split('\n').filter(line => line.includes('std::cout'))
-      .map(line => sourceSpan(locate(line.trim(), source.start)));
-    for (const [dimension, reason] of [
-      ['configuration', 'sdk_search_paths_not_exported'], ['syntax', 'focused_teaching_projection'],
-      ['declarations', 'project_declarations_only'], ['calls', 'stream_operator_and_implicit_library_calls_omitted'],
-      ['types', 'standard_library_internal_types_not_exported'], ['imports', 'transitive_sdk_headers_not_analyzed'],
-      ['references', 'focused_project_references_only']
-    ]) coverage(`coverage:${source.id}:${dimension}`, source.id, dimension, 'partial', [reason],
-      ['syntax', 'calls', 'references'].includes(dimension) ? excluded : []);
-  }
   for (const expression of model.Expression.filter(record => record.possible_implementation)) {
-    coverage(`coverage:implementation:${expression.id}`, expression.id, 'implementations', 'complete', [], [], 'possible_implementation[0]');
     evidence(`implementation:${expression.id}`, expression.id, expression.possible_implementation.map(edge => edge.target_id),
       { boundary: 'One known non-virtual source definition within this assessed source. No linker or runtime target completeness is claimed.' }).attribute_path = 'possible_implementation[0]';
   }
-  add('Diagnostic', contextual({ id: 'diagnostic:projection', severity: 'info', code: 'example.ILLUSTRATIVE_COVERAGE',
-    subject_id: 'inventory:example', message: 'This hand-authored projection omits stream insertion operators and SDK overload sets; execution analysis is outside scope. It is not an analyzer export.' }));
+  add('Diagnostic', { id: 'diagnostic:projection', severity: 'info', code: 'example.PROJECTION_LIMITATION',
+    subject_id: 'repository:example', message: 'This hand-authored projection does not analyze SDK header contents or resolve external libraries, and omits stream insertion operators. Execution analysis is outside scope. It is not an analyzer export.' });
   add('Diagnostic', contextual({ id: 'diagnostic:dependency-cycle', severity: 'info', code: 'example.STRUCTURAL_DEPENDENCY_CYCLE',
     subject_id: 'call:finalize-update', span: sourceSpan(within('owner_manager_->update_scene()', ranges.finalize)),
     related_subjects: [{ subject_id: 'decl:finalize', role: 'caller' }, { subject_id: 'decl:update', role: 'target' }],
@@ -740,7 +702,7 @@ int main() {
       ['Expression'],
       ['TypeExpression', 'TypeUse', 'Declaration', 'Expression', 'Symbol'],
       ['Expression', 'Import'],
-      ['Coverage', 'Diagnostic', 'Expression', 'Project']
+      ['Diagnostic', 'Expression', 'Project']
     ],
     stepRecordIds: [
       null,
@@ -761,7 +723,7 @@ int main() {
         'call:finalize-update', 'call:main-set-context', 'call:make-context', 'call:manager-get'],
       ['call:update-dispatch', 'call:dispatch-execute', 'call:execute-finalize', 'call:finalize-update',
         projectId,
-        'coverage:references', 'coverage:calls', 'diagnostic:dependency-cycle', 'diagnostic:projection',
+        'diagnostic:dependency-cycle', 'diagnostic:projection',
         ...conditionalCalls.flatMap(record => [record.declaration_id, record.condition_expression_id])]
     ],
     excerpts: [
@@ -838,10 +800,10 @@ int main() {
   for (const [category, records] of Object.entries(model)) model[category] = records.map(record => localize(record));
   window.CODE_GRAPH_EXAMPLE.excerpts = localize(window.CODE_GRAPH_EXAMPLE.excerpts);
   const records = new Map(Object.values(model).flat().map(record => [record.id, record]));
-  for (const assessment of [...model.Coverage, ...model.Diagnostic]) {
-    const subject = records.get(assessment.subject_id);
+  for (const diagnostic of model.Diagnostic) {
+    const subject = records.get(diagnostic.subject_id);
     const file = subject?.file_id || subject?.span?.file_id || subject?.id;
     const source = sources.find(item => item.id === file);
-    if (assessment.project_id && source) assessment.project_id = source.project;
+    if (diagnostic.project_id && source) diagnostic.project_id = source.project;
   }
 })();

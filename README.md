@@ -20,8 +20,8 @@ defines the **Semantic Code Graph** projection and its Code Facts mapping contra
   input to the user-facing graph, not a syntax-only intermediate representation.
 - **Semantic Code Graph:** Module follows language and version rules (Java 9+, C++20+, Python, JavaScript/TypeScript), with `IMPORT` between resolved module boundaries. Namespace is a C++ namespace or Java package that can span files. Unit is a structural type or a scope-level function or variable. Member is a callable or data entity nested inside a Unit. Repository, Project, Directory, ProjectFile, and Resource are shared identities. File `DECLARES` records participation separately from semantic ownership, and `DERIVED_FROM` retains traceable support.
 
-Structure Map offers **Code Facts** (19 structures) and **Semantic Code Graph**
-(9 types, including the 5 shared ones), or all 23 structures together. The same
+Structure Map offers **Code Facts** (18 structures) and **Semantic Code Graph**
+(9 types, including the 5 shared ones), or all 22 structures together. The same
 relationship name can have different endpoint types: Code Facts `Expression INVOKES Symbol`
 can support `Member INVOKES Unit` when a method calls a free function.
 OVERRIDE means overriding, not overloading. ACCESSES describes data reads/writes;
@@ -74,16 +74,13 @@ Whole-owner support is not blanket evidence for every outgoing edge. Dependency
 views retain local `evidence_refs` and precise `supporting_facts` alongside the
 supporting node IDs.
 
-Coverage remains an independent current assessment, including areas with no
-discovered facts. `dimension` describes the analysis aspect; optional
-`attribute_path` restricts its scope. There is one current assessment per
-subject/context/dimension/path, with explicit exclusions. Local binding
-completeness is not duplicated as Coverage state. Diagnostic remains a message
-with a namespaced code, optional primary subject/location, and related facts and
-locations; severity and wording do not determine truth or completeness. Expected
-unknown results need not each emit a warning. Snapshot updates replace affected
-evidence, recompute/invalidate Coverage, and remove obsolete Diagnostics together
-with the changed facts. Run history and retries remain outside this model.
+Diagnostic reports significant errors and limitations with a namespaced code,
+optional primary subject/location, and related facts and locations. A shared
+cause can be reported once at file, project, or repository scope rather than per
+fact. Expected unknown results need not emit a warning. Missing facts or
+diagnostics do not prove absence in the source or exhaustive analysis. Snapshot
+updates replace affected evidence and remove obsolete Diagnostics together with
+the changed facts. Run history and retries remain outside this model.
 
 Repository construction has four conceptual stages:
 
@@ -205,7 +202,7 @@ IDs and attach to their Symbol by `HAS_PROFILE`; the fixture's `symbol_id` is
 portable endpoint notation. Call syntax, local name uses and binding assessments
 belong to the existing source construct, not an additional profile or result ID.
 Step views are projections whose references resolve in the full
-example. Evidence and coverage explicitly state the example's assumptions and
+example. Evidence and diagnostics state the example's assumptions and
 limited analysis boundaries. Public C++17 standard-library type contracts are
 supplied manually; SDK overload sets and stream insertion chains are not claimed.
 The checked-in C++ and CMake files exactly match the offline content store; the
@@ -277,7 +274,7 @@ hidden in JSON. Target-selection conditions stay associated with individual
 INVOKES edges; their expression relationships also identify the target
 position. Reaching a call and selecting a target are different questions. The
 fixture's embedded `condition: {predicate, completeness}` is portable notation
-for these properties and relationships; condition evidence and coverage refer
+for these properties and relationships; condition evidence refers
 to the source Expression and precise edge path. Missing conditions are unknown, not true.
 
 Each construct can preserve local `name_uses` (unique local keys, offsets, role and
@@ -290,7 +287,7 @@ is a different local name site and may still name an overload set. A result with
 no known target remains explicitly unresolved or unsupported. Unknown candidates
 need evidence, rejected candidates produce no dependency, and selected targets
 require a complete relevant candidate scope and established identity. Evidence
-and coverage attach to the source ID plus paths such as `invokes[0]`; contexts,
+attaches to the source ID plus paths such as `invokes[0]`; contexts,
 conditions and support must not leak between alternatives. The teaching fixture's
 outgoing lists are portable graph notation, not nested native Neo4j properties.
 
@@ -300,7 +297,7 @@ blocks remain visible without asserting branch execution, feasibility, or
 termination. A `PresenceCondition` concerns source/configuration applicability,
 not a runtime branch. Aggregated contexts need not apply simultaneously.
 
-The Code Facts model has **19 named structures across seven documentation groups**
+The Code Facts model has **18 named structures across seven documentation groups**
 and **two conformance levels**: syntactic and semantic. These are capabilities of
 the first USG layer, not the Code Facts / Semantic Code Graph architecture. The semantic conformance level targets structural component
 dependencies; a unique selected target is not required to preserve supported
@@ -354,7 +351,7 @@ separate subject references and can be saved with the existing create/update
 operation. No dedicated property collection pass is required. Absence means not
 recorded; explicit unknown or not-applicable values use `null`, not `false` or zero.
 Candidate values and different contexts remain distinct, and canonical fields or
-typed edge details are not duplicated. Evidence and coverage identify an embedded
+typed edge details are not duplicated. Evidence identifies an embedded
 edge or property through its source node and precise path, such as
 `imports_from[0]` or `semantic_properties[0]`. Property-specific support does not
 establish the containing relationship. The C++ example attaches `value_category:
@@ -364,8 +361,8 @@ Project structure is available before code analysis and supplies the boundaries
 for both code conformance levels. `Repository` describes a Git checkout and its
 required `revision`, the full commit hash processed, including incremental runs;
 discovery configuration is stored
-outside this model. `Coverage` and `Diagnostic` describe incomplete structural
-results. Each recognized project descriptor identifies a
+outside this model. `Diagnostic` reports material discovery limitations.
+Each recognized project descriptor identifies a
 `Project`; `Directory` and `ProjectFile` inventory code and non-code entries.
 Direct `CONTAINS` edges record membership, `EXTERNAL` edges link projects to
 `ExternalLibrary`, and `DEPENDS_ON` edges link same-repository projects. These
@@ -398,8 +395,8 @@ Analysis results retain scalar `project_id` qualifiers when needed to distinguis
 shared-file build scopes; these qualifiers do not create project relationships.
 Different incompatible build configurations use separate project observations.
 File-local macro changes and include-site conditions retain supported alternatives;
-if analysis cannot distinguish them, coverage stays partial or unknown rather
-than claiming a unique target. Language packages and modules remain directories,
+if analysis cannot distinguish them, it does not claim a unique target.
+Language packages and modules remain directories,
 declarations, or symbols inside a descriptor-based project.
 Declaration nesting uses `parent_declaration_id`; expressions and imports refer
 directly to their containing declaration and file. Type uses inherit

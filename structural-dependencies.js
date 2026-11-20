@@ -74,9 +74,6 @@
     }
     const evidenceFor = id => (get(id).evidence || []).map(entry => ({ ...entry, owner_id: id }));
     const evidenceInProject = (entry, projectId) => entry.project_id === projectId || entry.project_independent === true;
-    const coverageDimensions = ['syntax', 'declarations', 'references', 'calls', 'types', 'imports', 'annotations',
-      'configuration', 'candidate_scope', 'implementations', 'projects', 'files', 'project_dependencies', 'external_libraries'];
-    const structuralDimensions = ['projects', 'files', 'project_dependencies', 'external_libraries'];
     function validateSpan(span) {
       const file = get(span.file_id);
       const content = readContent?.(file.content_ref);
@@ -109,19 +106,6 @@
         }
         entry.source_spans.forEach(validateSpan);
       }
-    }
-    const coverageScopes = new Set();
-    for (const record of model.Coverage || []) {
-      get(record.subject_id);
-      const scope = JSON.stringify([record.subject_id, record.project_id ?? null, record.dimension, record.attribute_path ?? null]);
-      if (coverageScopes.has(scope) || !coverageDimensions.includes(record.dimension) ||
-        !['complete', 'partial', 'unknown', 'not_applicable'].includes(record.state) ||
-        (record.project_id ? get(record.project_id).category !== 'Project' : !structuralDimensions.includes(record.dimension)) ||
-        record.attribute_path !== undefined && (typeof record.attribute_path !== 'string' || !record.attribute_path)) {
-        throw new Error(`Invalid current Coverage scope: ${record.id}`);
-      }
-      coverageScopes.add(scope);
-      (record.excluded_spans || []).forEach(validateSpan);
     }
     for (const record of model.Diagnostic || []) {
       if (!['info', 'warning', 'error'].includes(record.severity) || typeof record.message !== 'string' ||
@@ -194,11 +178,6 @@
       } else {
         if (!['annotation', 'attribute', 'decorator', 'language_specific'].includes(source.form) ||
           !Array.isArray(source.targets) || !Array.isArray(source.arguments)) throw new Error(`Invalid Annotation syntax on ${source.id}`);
-        if (!source.targets.length && (!(model.Coverage || []).some(record => record.subject_id === source.id &&
-          record.dimension === 'annotations' && record.attribute_path === 'targets' && ['partial', 'unknown'].includes(record.state)) ||
-          !(model.Diagnostic || []).some(record => record.subject_id === source.id))) {
-          throw new Error(`Missing Annotation target assessment on ${source.id}`);
-        }
         for (const target of source.targets) {
           const endpoint = get(target.target_id);
           const key = JSON.stringify([source.file_id, target.target_id, target.role, target.position]);
@@ -224,17 +203,9 @@
         path.startsWith(`${embeddedEdge.attribute_path}.`) && !path.startsWith(`${embeddedEdge.attribute_path}.semantic_properties`);
       const supportingSubjects = [...new Set([record.id, siteId].filter(Boolean))];
       const conditionSupport = path => kind === 'call' && (path === 'condition' || path?.startsWith('condition.'));
-      const relevantDimensions = kind === 'call' ? ['calls', 'candidate_scope'] : kind === 'reference' ? ['references', 'candidate_scope']
-        : kind === 'implementation' ? ['implementations'] : kind === 'imports_from'
-          ? ['imports', 'candidate_scope'] : kind === 'type' ? ['types'] : ['types', 'references'];
       const evidence = supportingSubjects.flatMap(evidenceFor).filter(item => !embeddedEdge ||
         evidenceInProject(item, record.project_id) && item.attribute_path &&
         (matchesEdge(item.attribute_path) || conditionSupport(item.attribute_path)));
-      const coverage = (model.Coverage || []).filter(item => supportingSubjects.includes(item.subject_id) && relevantDimensions.includes(item.dimension) &&
-        (!embeddedEdge || item.project_id === record.project_id &&
-          (item.dimension === 'types' && !item.attribute_path && embeddedEdge.type_expression_id ||
-            item.attribute_path && (matchesEdge(item.attribute_path) || conditionSupport(item.attribute_path) ||
-              item.attribute_path === embeddedEdge.assessment_path))));
       edges.push({
         from, to, kind, certainty, project_id: record.project_id,
         ...embeddedEdge,
@@ -248,7 +219,7 @@
           ...(item.project_id ? { project_id: item.project_id } : { project_independent: true }) })),
         supporting_facts: evidence.flatMap(item => item.supports),
         supporting_ids: [...new Set([record.id, siteId, embeddedEdge?.type_expression_id, embeddedEdge?.semantic_target_id,
-          ...evidence.flatMap(item => item.supports.map(support => support.subject_id)), ...coverage.map(item => item.id)].filter(Boolean))],
+          ...evidence.flatMap(item => item.supports.map(support => support.subject_id))].filter(Boolean))],
         presence_conditions: [record.presence_condition, ...sourceConditions(siteId),
           ...(embeddedEdge && record.site_id && record.site_id !== siteId ? sourceConditions(record.site_id) : [])].filter(value => value !== undefined)
       });

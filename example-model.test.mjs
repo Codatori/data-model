@@ -89,7 +89,6 @@ test('relationship graph has one node per specification type and uses source-bac
     ['ProjectFile', 'Annotation', 'ANNOTATES'], ['Declaration', 'Annotation', 'CONTAINS_ANNOTATION'],
     ['Annotation', 'Declaration', 'ANNOTATES'], ['Annotation', 'Expression', 'HAS_ARGUMENT'],
     ['Annotation', 'Expression', 'HAS_APPLICATION_EXPRESSION'],
-    ['Coverage', 'Project', 'ASSESSED_IN'], ['Coverage', 'ProjectFile', 'EXCLUDES_SOURCE'],
     ['Diagnostic', 'Project', 'REPORTED_IN'], ['Diagnostic', 'ProjectFile', 'LOCATED_IN'],
     ['Diagnostic', 'ProjectFile', 'RELATED_LOCATION'],
     ['Project', 'Module', 'CONTAINS'], ['Resource', 'ProjectFile', 'CLASSIFIES'],
@@ -145,7 +144,7 @@ test('relationship graph has one node per specification type and uses source-bac
   assert(!links.some(link => link.from === 'TypeUse' && link.to === 'TypeProfile'), 'Name binding does not replace semantic type structure');
   assert(!names.includes('CallCondition'));
   assert(!names.includes('Evidence'));
-  assert(!links.some(link => ['Coverage', 'Diagnostic'].includes(link.from) && /_id/.test(link.field)));
+  assert(!links.some(link => link.from === 'Diagnostic' && /_id/.test(link.field)));
   assert(!links.some(link => link.from === 'Expression' &&
     ['file_id', 'declaration_id', 'introduced_symbol_id', 'callee_expression_id', 'operands[].expression_id', 'arguments[].expression_id', 'has_type[].target_id'].includes(link.field)),
   'Expression and call syntax links use native relationship names');
@@ -215,12 +214,12 @@ test('interactive graph filters relationship endpoints without discarding moved 
   runInNewContext(`${setup}\n${labeling}\n${filtering}\nwindow.graph = { state, graphNodes, filteredEntities, related };\n})();`, browser);
   const { state, graphNodes, filteredEntities, related } = browser.window.graph;
   assert(graphNodes.every(node => Number.isFinite(node.x) && Number.isFinite(node.y)));
-  assert.equal(filteredEntities().length, 23);
+  assert.equal(filteredEntities().length, 22);
   state.layer = 'semantic-graph';
   assert.deepEqual(Array.from(filteredEntities(), entity => entity.name).sort(),
     ['Directory', 'Member', 'Module', 'Namespace', 'Project', 'ProjectFile', 'Repository', 'Resource', 'Unit']);
   state.layer = 'code-facts';
-  assert.equal(filteredEntities().length, 19);
+  assert.equal(filteredEntities().length, 18);
   assert(filteredEntities().some(entity => entity.name === 'Resource'));
   assert(!filteredEntities().some(entity => ['Module', 'Namespace', 'Unit', 'Member'].includes(entity.name)));
   state.layer = 'all';
@@ -237,7 +236,7 @@ test('interactive graph filters relationship endpoints without discarding moved 
   state.query = 'no-matching-structure';
   assert.equal(filteredEntities().length, 0);
   state.query = ''; state.layer = 'all'; state.neighbors = false; state.relationFilter = 'all';
-  assert.equal(filteredEntities().length, 23);
+  assert.equal(filteredEntities().length, 22);
   assert.equal(expression.x, -150);
   assert.equal(expression.y, 420);
 });
@@ -287,7 +286,7 @@ test('USG separates reconciled Code Facts from the user-facing Semantic Code Gra
   assert(architecture.includes('replacing a previous result MUST NOT leave stale selected targets'));
   assert(architecture.includes('not the two-layer architecture'));
   const names = [...specification.matchAll(/^### (\w+)$/gm)].map(match => match[1]);
-  assert.equal(names.length, 23);
+  assert.equal(names.length, 22);
   for (const name of ['Reference', 'Resolution', 'ImplementationSet', 'CallProfile']) assert(!names.includes(name));
   for (const name of ['Module', 'Namespace', 'Unit', 'Member']) {
     assert(names.includes(name));
@@ -295,15 +294,13 @@ test('USG separates reconciled Code Facts from the user-facing Semantic Code Gra
   }
 });
 
-test('quality contracts embed evidence and separate coverage scope from diagnostic messages', () => {
+test('quality contracts embed evidence and report limitations without completeness nodes', () => {
   const specification = context.window.CODE_GRAPH_SOURCE;
   assert(!/^### Evidence$/m.test(specification));
   assert(specification.includes('#### Embedded Evidence'));
   assert(specification.includes('No Evidence category or canonical evidence ID'));
-  const coverage = specification.split('### Coverage\n')[1].split('### Diagnostic\n')[0];
-  assert(coverage.includes('never an AttributePath'));
-  assert(coverage.includes('`attribute_path` ?'));
-  assert(coverage.includes('At most one current Coverage'));
+  assert.doesNotMatch(specification, /\b(?:Coverage|ASSESSES|ASSESSED_IN|EXCLUDES_SOURCE)\b/);
+  assert(!('Coverage' in model));
   assert(specification.includes('### Diagnostic'));
   assert(specification.includes('`RELATED_TO`'));
   assert(specification.includes('#### Current-State Updates'));
@@ -355,37 +352,18 @@ test('quality validation rejects global evidence identities, duplicate local key
   }
 });
 
-test('Coverage has unique current scopes and dimensions do not act as fact paths', () => {
-  const copy = JSON.parse(JSON.stringify(model));
-  const record = copy.Coverage.find(item => item.subject_id === 'call:dispatch-execute' && item.attribute_path?.startsWith('binding_results'));
-  copy.Coverage.push({ ...record, id: 'coverage:duplicate' });
-  assert.throws(() => context.window.CODE_GRAPH_DEPENDENCIES(copy), /current Coverage scope/);
-  copy.Coverage.pop();
-  const originalDimension = record.dimension;
-  record.dimension = record.attribute_path;
-  assert.throws(() => context.window.CODE_GRAPH_DEPENDENCIES(copy), /current Coverage scope/);
-  record.dimension = originalDimension;
-  const originalContext = record.project_id;
-  delete record.project_id;
-  assert.throws(() => context.window.CODE_GRAPH_DEPENDENCIES(copy), /current Coverage scope/);
-  record.project_id = originalContext;
-  record.dimension = 'imports';
-  const edges = context.window.CODE_GRAPH_DEPENDENCIES(copy).edges;
-  assert(!edges.some(edge => edge.kind === 'call' && edge.supporting_ids.includes(record.id)), 'A matching path in an unrelated dimension is not call coverage');
-  assert.equal(copy.Coverage.find(item => item.id === 'coverage:external-libraries').state, 'unknown', 'No emitted dependencies does not mean complete inventory');
-});
-
 test('Diagnostic retains related facts and locations without changing truth or completeness', () => {
   const copy = JSON.parse(JSON.stringify(model));
   const diagnostic = copy.Diagnostic.find(record => record.id === 'diagnostic:dependency-cycle');
   assert.equal(diagnostic.related_subjects.length, 2);
   assert.equal(diagnostic.related_spans.length, 1);
   const baseline = JSON.stringify(context.window.CODE_GRAPH_DEPENDENCIES(copy).edges);
-  const coverage = JSON.stringify(copy.Coverage);
   diagnostic.severity = 'error';
   diagnostic.message = 'Changed wording cannot change graph facts.';
   assert.equal(JSON.stringify(context.window.CODE_GRAPH_DEPENDENCIES(copy).edges), baseline);
-  assert.equal(JSON.stringify(copy.Coverage), coverage);
+  copy.Diagnostic = [];
+  assert.equal(JSON.stringify(context.window.CODE_GRAPH_DEPENDENCIES(copy).edges), baseline);
+  copy.Diagnostic.push(diagnostic);
   diagnostic.related_subjects[0].subject_id = 'missing:declaration';
   assert.throws(() => context.window.CODE_GRAPH_DEPENDENCIES(copy), /missing record/);
   diagnostic.related_subjects[0].subject_id = 'decl:finalize';
@@ -424,7 +402,6 @@ test('Import source assessments retain unresolved directives, candidates, contex
   const assessment = source.binding_results.find(result => result.site_key === 'source');
   const established = context.window.CODE_GRAPH_DEPENDENCIES(copy).edges.find(edge => edge.kind === 'imports_from');
   assert.equal(established.candidate_set_completeness, 'complete');
-  assert(established.supporting_ids.includes('coverage:using-Engine-source'));
   assert(!context.window.CODE_GRAPH_DEPENDENCIES(copy).edges.some(edge => edge.supporting_ids.includes('import:memory')));
   assessment.state = 'partial';
   assessment.candidate_set_completeness = 'partial';
@@ -528,12 +505,8 @@ test('Annotation preserves file and return targets, source order and shared writ
   annotation.targets[0].role = 'return';
   assert.throws(() => context.window.CODE_GRAPH_DEPENDENCIES(fixture), /Annotation target/);
   annotation.targets = [];
-  assert.throws(() => context.window.CODE_GRAPH_DEPENDENCIES(fixture), /target assessment/);
-  fixture.Coverage.push({ id: 'coverage:annotation', subject_id: annotation.id, project_id: 'project:fragment', dimension: 'annotations', attribute_path: 'targets', state: 'partial' });
-  assert.throws(() => context.window.CODE_GRAPH_DEPENDENCIES(fixture), /target assessment/);
-  fixture.Diagnostic.push({ id: 'diagnostic:annotation', subject_id: annotation.id, severity: 'warning',
-    code: 'test.unsupported_target', message: 'Target syntax is unavailable in this test fragment.' });
-  context.window.CODE_GRAPH_DEPENDENCIES(fixture);
+  assert.equal(context.window.CODE_GRAPH_DEPENDENCIES(fixture).edges.length, 0,
+    'An unknown annotation target does not produce a dependency or require a per-fact diagnostic');
 });
 
 test('computed Import paths reuse actual Expressions and reject foreign ownership or source ranges', () => {
@@ -1049,21 +1022,18 @@ test('the model preserves conditional source dependencies without execution reco
     const condition = call.condition;
     assert.equal(condition.predicate.expression_id, conditional.condition_expression_id);
     assert.equal(condition.completeness, 'complete');
-    assert(model.Coverage.some(record => record.subject_id === call.id && record.dimension === 'calls' && record.attribute_path === 'condition' && record.state === 'complete'));
     assert(call.evidence.some(record => record.method === 'syntax' && record.authority === 'observed'));
   }
-  assert.equal(entities.get('coverage:references').state, 'partial');
   assert.equal(entities.get('diagnostic:dependency-cycle').code, 'example.STRUCTURAL_DEPENDENCY_CYCLE');
   assert.match(entities.get('diagnostic:dependency-cycle').message, /do not prove execution/);
   for (const category of ['SourceMapping', 'FlowNode', 'FlowEdge', 'DataFlowRelation']) assert(!(category in model));
-  assert(!model.Coverage.some(record => ['control_flow', 'data_flow'].includes(record.dimension)));
 });
 
 test('the offline specification and teaching schema match the sole specification', () => {
   const specification = readFileSync(new URL('Code Graph Data Model v2.md', import.meta.url), 'utf8');
   assert.equal(context.window.CODE_GRAPH_SOURCE, specification);
   const names = [...specification.matchAll(/^### (\w+)$/gm)].map(match => match[1]);
-  assert.equal(names.length, 23);
+  assert.equal(names.length, 22);
   assert.equal(new Set(names).size, names.length);
   for (const category of Object.keys(model)) assert(names.includes(category), `Unknown category: ${category}`);
   assert(!('CodeDataset' in model));
@@ -1114,10 +1084,6 @@ test('project structures, typed endpoints, and explorer summaries stay documente
   assert(!structures.has('SemanticRelation'));
   assert(!structures.has('SemanticProperty'));
   assert.match(structures.get('ProjectFile'), /`content_ref` \?/);
-  assert.match(structures.get('Coverage'), /`ASSESSED_IN` \| Coverage -> Project/);
-  for (const dimension of ['projects', 'files', 'project_dependencies', 'external_libraries']) {
-    assert(structures.get('Coverage').includes(`\`${dimension}\``), `Missing structural coverage: ${dimension}`);
-  }
   let columns = 0;
   for (const line of specification.split('\n')) {
     if (!line.startsWith('|')) { columns = 0; continue; }
@@ -1176,7 +1142,6 @@ test('resolved includes target ordinary ProjectFile nodes without file groups', 
     is_reexport: false, bindings: [], path_segments: ['types.h'],
     binding_results: [{ project_id, site_key: 'source', state: 'resolved', candidate_set_completeness: 'complete', reason_codes: [] }],
     imports_from: [{ project_id, site_key: 'source', target_id: 'file:header', state: 'established' }] });
-  fixture.Coverage.push({ id: 'coverage:header', subject_id: 'file:header', project_id, dimension: 'declarations', state: 'unknown' });
   const view = context.window.CODE_GRAPH_DEPENDENCIES(fixture);
   assert.equal(view.edges.length, 1);
   assert.equal(view.edges[0].from, file_id);
@@ -1185,7 +1150,6 @@ test('resolved includes target ordinary ProjectFile nodes without file groups', 
   assert.equal(fixture.ProjectFile.length, 2);
   assert.equal(fixture.Project.length, 1);
   assert.equal(fixture.Symbol.length, 0, 'Resolving a header must not fabricate analyzed symbols');
-  assert.equal(fixture.Coverage[0].state, 'unknown');
 });
 
 test('declarations and expressions preserve project/file containment without lexical-area nodes', () => {
@@ -1285,7 +1249,9 @@ test('analysis boundaries are descriptor-based projects and file-level dependenc
   delete copy.Expression.find(record => record.id === 'call:update-dispatch').declaration_id;
   const view = context.window.CODE_GRAPH_DEPENDENCIES(copy);
   assert(view.edges.some(edge => edge.kind === 'call' && edge.from === 'inventory:example' && edge.to === 'symbol:dispatch'));
-  assert.equal(entities.get('coverage:external-libraries').state, 'unknown');
+  const limitation = entities.get('diagnostic:projection');
+  assert.equal(limitation.subject_id, 'repository:example');
+  assert.match(limitation.message, /does not analyze SDK header contents or resolve external libraries/);
 });
 
 test('component aggregation retains provenance, source types, and optional implementation uncertainty', () => {
@@ -1307,7 +1273,6 @@ test('component aggregation retains provenance, source types, and optional imple
   assert.equal(edge.call_condition.completeness, 'complete');
   assert.equal(edge.target_condition, undefined, 'Absent target conditions remain unknown');
   assert(edge.evidence_refs.some(entry => entry.subject_id === 'call:dispatch-execute' && entry.key === 'conditional-dispatch'));
-  assert(edge.supporting_ids.includes('coverage:conditional-dispatch'));
   assert(!view.edges.some(edge => ['call:make-context', 'call:manager-get'].some(id => edge.kind === 'call' && edge.supporting_ids.includes(id))));
 });
 
@@ -1319,9 +1284,6 @@ test('supported possible candidates survive without selection; inapplicable targ
   resolution.candidate_set_completeness = 'partial';
   delete call.possible_implementation;
   call.evidence = call.evidence.filter(record => record.attribute_path === 'condition');
-  for (const coverage of copy.Coverage.filter(record => record.subject_id === call.id && record.attribute_path?.startsWith('binding_results'))) {
-    coverage.state = 'partial';
-  }
   call.invokes = [
     { site_key: 'call', project_id: resolution.project_id, state: 'candidate', target_id: 'symbol:execute', applicability: 'applicable', reason_codes: [],
       condition: { predicate: { kind: 'expression', expression_id: 'condition:dispatch' }, completeness: 'partial' } },
@@ -1411,9 +1373,8 @@ test('composite occurrence conditions preserve logical structure, uncertainty, a
   assert.equal(JSON.stringify(edge.call_condition), JSON.stringify(profile.condition));
   assert.equal(edge.target_condition, undefined);
   assert(edge.evidence_refs.some(entry => entry.key === 'conditional-dispatch'));
-  assert(edge.supporting_ids.includes('coverage:conditional-dispatch'));
-  assert(!view.edges.some(record => record.kind === 'reference' && (record.supporting_ids.includes('coverage:conditional-dispatch') ||
-    record.evidence_refs.some(entry => entry.subject_id === profile.id && entry.key === 'conditional-dispatch'))), 'Occurrence support must not leak into callee lookup');
+  assert(!view.edges.some(record => record.kind === 'reference' &&
+    record.evidence_refs.some(entry => entry.subject_id === profile.id && entry.key === 'conditional-dispatch')), 'Occurrence support must not leak into callee lookup');
   profile.condition = { predicate: { kind: 'and', predicates: [] }, completeness: 'complete' };
   const unrestricted = context.window.CODE_GRAPH_DEPENDENCIES(copy).edges.find(record =>
     record.kind === 'call' && record.supporting_ids.includes(profile.id));
@@ -1459,7 +1420,7 @@ test('HAS_TYPE directly connects permitted subjects to contextual type expressio
   assert.notEqual(argument.role, argument.has_type[0].role, 'Syntax and semantic edge roles are distinct');
 });
 
-test('HAS_TYPE alternatives retain edge paths, contexts, and their own evidence and coverage', () => {
+test('HAS_TYPE alternatives retain edge paths, contexts, and their own evidence', () => {
   const copy = JSON.parse(JSON.stringify(model));
   const source = copy.Declaration.find(record => record.id === 'decl:context-variable');
   copy.Project.push({ ...copy.Project[0], id: 'context:type-alternate' });
@@ -1473,11 +1434,9 @@ test('HAS_TYPE alternatives retain edge paths, contexts, and their own evidence 
     source.evidence ??= [];
     source.evidence.push({ key: `type-${index}`, project_id: edge.project_id,
       attribute_path: `has_type[${index}]`, method: 'manual', authority: 'inferred', supports: [], source_spans: [] });
-    copy.Coverage.push({ id: `coverage:type-${index}`, subject_id: source.id,
-      project_id: edge.project_id, dimension: 'types', attribute_path: `has_type[${index}]`, state: 'partial' });
   });
-  copy.Coverage.push({ id: 'coverage:wrong-type-context', subject_id: source.id,
-    project_id: 'project:example', dimension: 'types', attribute_path: 'has_type[2]', state: 'partial' });
+  source.evidence.push({ key: 'wrong-type-context', project_id: 'project:example',
+    attribute_path: 'has_type[2]', method: 'manual', authority: 'inferred', supports: [], source_spans: [] });
   const before = JSON.stringify(copy);
   const edges = context.window.CODE_GRAPH_DEPENDENCIES(copy).edges.filter(edge => edge.type_subject_id === source.id);
   assert.equal(JSON.stringify(copy), before, 'Typing projection must not mutate canonical records');
@@ -1488,7 +1447,6 @@ test('HAS_TYPE alternatives retain edge paths, contexts, and their own evidence 
     assert.equal(edge.type_expression_id, source.has_type[index].target_id);
     assert.equal(edge.certainty, index === 2 ? 'established' : 'possible');
     assert.deepEqual([...edge.evidence_refs].map(entry => entry.key), [`type-${index}`]);
-    assert.deepEqual([...edge.supporting_ids].filter(id => id.startsWith('coverage:')), [`coverage:type-${index}`]);
     assert(edge.supporting_ids.includes(source.id));
     assert(edge.supporting_ids.includes(edge.type_expression_id));
   });
@@ -1585,13 +1543,9 @@ test('direct semantic edges preserve contexts, conditions, typed details, and ed
       attribute_path: `inherits[${index}]`, method: 'manual', authority: 'inferred', supports: [], source_spans: [] });
     source.evidence.push({ key: `semantic-property-${index}`, project_id: edge.project_id,
       attribute_path: `inherits[${index}].semantic_properties[0]`, method: 'manual', authority: 'inferred', supports: [], source_spans: [] });
-    copy.Coverage.push({ id: `coverage:semantic-${index}`, subject_id: source.id,
-      project_id: edge.project_id, dimension: 'types', attribute_path: `inherits[${index}]`, state: 'partial' });
-    copy.Coverage.push({ id: `coverage:semantic-property-${index}`, subject_id: source.id,
-      project_id: edge.project_id, dimension: 'types', attribute_path: `inherits[${index}].semantic_properties[0]`, state: 'partial' });
   });
-  copy.Coverage.push({ id: 'coverage:semantic-wrong-context', subject_id: source.id,
-    project_id: 'project:example', dimension: 'types', attribute_path: 'inherits[1]', state: 'complete' });
+  source.evidence.push({ key: 'semantic-wrong-context', project_id: 'project:example',
+    attribute_path: 'inherits[1]', method: 'manual', authority: 'inferred', supports: [], source_spans: [] });
   const before = JSON.stringify(copy);
   const edges = context.window.CODE_GRAPH_DEPENDENCIES(copy).edges.filter(edge => edge.kind === 'inherits');
   assert.equal(JSON.stringify(copy), before);
@@ -1609,7 +1563,6 @@ test('direct semantic edges preserve contexts, conditions, typed details, and ed
     assert.equal(edge.semantic_properties[1].value, null);
     assert.equal(edge.semantic_properties[0].project_id, undefined, 'Embedded properties inherit this edge context');
     assert.deepEqual([...edge.evidence_refs].map(entry => entry.key), [`semantic-${index}`]);
-    assert.deepEqual([...edge.supporting_ids].filter(id => id.startsWith('coverage:semantic')), [`coverage:semantic-${index}`]);
     assert.deepEqual([...edge.presence_conditions].map(condition => condition.name), [`SYNTHETIC_EDGE_${index}`, 'SYNTHETIC_SOURCE']);
   });
   const imported = context.window.CODE_GRAPH_DEPENDENCIES(model).edges.find(edge => edge.kind === 'imports_from');
