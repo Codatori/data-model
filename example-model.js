@@ -149,7 +149,7 @@ int main() {
   const model = Object.fromEntries([
     'Repository', 'Project', 'Directory', 'ProjectFile',
     'Symbol', 'Declaration', 'TypeProfile', 'CallableProfile', 'ParameterProfile',
-    'Import', 'Expression', 'TypeExpression', 'TypeUse', 'Diagnostic'
+    'Import', 'Expression', 'TypeExpression', 'TypeUse', 'Diagnostic', 'Resource'
   ].map(category => [category, []]));
   const symbolProfiles = new Set(['CallableProfile', 'ParameterProfile', 'TypeProfile']);
   const add = (category, record) => {
@@ -306,6 +306,9 @@ int main() {
     ['inventory:viewer-descriptor', 'viewer/CMakeLists.txt'], ['inventory:root-descriptor', 'CMakeLists.txt']]) {
     add('ProjectFile', { id, uri: `memory:///${path}`, name: 'CMakeLists.txt', kind: 'descriptor', origin: 'source', content_ref: contentRef(path) });
   }
+  // Each build descriptor is also classified as a non-code Resource backed by its single ProjectFile.
+  for (const [id, file] of [['resource:descriptor', 'inventory:descriptor'], ['resource:viewer-descriptor', 'inventory:viewer-descriptor'],
+    ['resource:root-descriptor', 'inventory:root-descriptor']]) add('Resource', { id, kind: 'descriptor', media_type: 'text/x-cmake', file_id: file });
   for (const source of sources) add('ProjectFile', { id: source.id, uri: `memory:///${source.path}`,
     name: source.path.split('/').pop(), kind: 'source', origin: 'source', language: 'cpp', content_ref: contentRef(source.path) });
   add('Project', { id: projectId, name: 'engine', language: 'cpp', build_system: 'cmake', kind: 'library', ...settings,
@@ -337,14 +340,18 @@ int main() {
     ...['directory:example', 'directory:viewer'].map(target => ({
       source_id: 'directory:repository', type: 'PARENT_OF', target_id: target, state: 'established'
     })),
-    { source_id: 'directory:repository', type: 'CONTAINS', target_id: 'inventory:root-descriptor', state: 'established' }
+    { source_id: 'directory:repository', type: 'CONTAINS', target_id: 'inventory:root-descriptor', state: 'established' },
+    ...model.Resource.map(resource => ({ source_id: resource.id, type: 'CLASSIFIES', target_id: resource.file_id, state: 'established' }))
   ];
+  model.Resource.forEach(resource => delete resource.file_id);
   evidence('example-project', 'project:example', ['inventory:descriptor', 'inventory:example'],
     { descriptor_ref: contentRef('engine/CMakeLists.txt'),
       boundary: 'Hand-authored CMake interface-library target with two public headers; no SDK dependency resolution or execution is claimed.' });
   evidence('viewer-project', 'project:viewer', ['inventory:viewer-descriptor', 'inventory:root-descriptor'],
     { descriptor_ref: contentRef('viewer/CMakeLists.txt'), boundary: 'target_link_libraries(viewer PRIVATE engine) establishes the explicit viewer -> engine build dependency.' });
-  symbol('symbol:Engine', 'Engine', 'namespace');
+  // The C++ global namespace is unnamed and has no declaration; it owns every top-level entity.
+  add('Symbol', { id: 'symbol:global', kind: 'namespace', origin: 'intrinsic', identity_state: 'established' });
+  symbol('symbol:Engine', 'Engine', 'namespace', 'symbol:global');
   symbol('symbol:SceneManager', 'SceneManager', 'type', 'symbol:Engine');
   symbol('symbol:RenderContext', 'RenderContext', 'type', 'symbol:Engine');
   declaration('decl:Engine', 'symbol:Engine', null, ranges.engine, { body_span: bodySpan(ranges.engine) });
@@ -355,7 +362,7 @@ int main() {
   for (const name of ['SceneManager', 'RenderContext']) add('TypeProfile', {
     id: `symbol:${name}`, type_kind: 'class', type_parameter_ids: []
   });
-  symbol('symbol:std', 'std', 'namespace', null, 'external');
+  symbol('symbol:std', 'std', 'namespace', 'symbol:global', 'external');
   symbol('symbol:std-string', 'string', 'type', 'symbol:std', 'external');
   symbol('symbol:std-shared', 'shared_ptr', 'type', 'symbol:std', 'external');
   symbol('symbol:std-shared-T', 'T', 'type_parameter', 'symbol:std-shared', 'external');
@@ -402,7 +409,7 @@ int main() {
     ['main', 'main', null, 'main', 'function']
   ];
   for (const [key, name, owner, rangeKey, kind] of methods) {
-    symbol(`symbol:${key}`, name, 'callable', owner ? `symbol:${owner}` : null);
+    symbol(`symbol:${key}`, name, 'callable', owner ? `symbol:${owner}` : 'symbol:global');
     const parentDeclarationId = key === 'main' ? null : key === 'dispatch' ? 'decl:Engine-render' : `decl:${owner}`;
     declaration(`decl:${key}`, `symbol:${key}`, parentDeclarationId, ranges[rangeKey], {
       body_span: bodySpan(ranges[rangeKey]), modifiers: key === 'main' ? [] : key === 'scene-ctor' ? ['explicit', 'inline'] : ['inline'],
@@ -458,6 +465,12 @@ int main() {
     }
     return id;
   }
+  // A written type name binds through its own name use, like every other resolved name in the example.
+  function typeName(key, spelling, name, symbolId, qualification) {
+    const decl = model.Declaration.find(record => record.id === `decl:${key}`);
+    const range = within(spelling, { start: decl.span.start_offset, end: decl.span.end_offset });
+    reference(`reference:type-${key}`, `typeuse:${key}`, within(name, range), 'type', symbolId, qualification);
+  }
   declaredTypeUse('scene-name', 'std::string', 'type:std-string');
   declaredTypeUse('active-context', 'std::shared_ptr<RenderContext>', 'type:shared-render', 'declared',
     { name: 'RenderContext', role: 'argument', type: 'type:RenderContext', symbol: 'symbol:RenderContext' });
@@ -470,6 +483,8 @@ int main() {
   declaredTypeUse('ctor-frame', 'int', 'type:int');
   declaredTypeUse('ctor-manager', 'SceneManager*', 'type:scene-pointer', 'declared',
     { name: 'SceneManager', role: 'declared', type: 'type:SceneManager', symbol: 'symbol:SceneManager' });
+  for (const key of ['scene-name', 'ctor-name']) typeName(key, 'std::string', 'string', 'symbol:std-string', 'qualified');
+  for (const key of ['active-context', 'set-context-parameter']) typeName(key, 'std::shared_ptr', 'shared_ptr', 'symbol:std-shared', 'qualified');
   for (const [key, , , rangeKey, kind] of methods) if (kind !== 'constructor') {
     const decl = model.Declaration.find(record => record.id === `decl:${key}`);
     typeUse(`typeuse:return-${key}`, decl.id, within(key === 'main' ? 'int' : 'void', ranges[rangeKey]),
@@ -557,7 +572,7 @@ int main() {
     bind(`typeuse:${key}`, type, 'inferred');
   }
 
-  symbol('symbol:Application', 'Application', 'type');
+  symbol('symbol:Application', 'Application', 'type', 'symbol:global');
   add('TypeProfile', { id: 'symbol:Application', type_kind: 'class', type_parameter_ids: [] });
   add('TypeExpression', { id: 'type:Application', kind: 'nominal', symbol_id: 'symbol:Application', qualifiers: [], completeness: 'complete' });
   add('TypeExpression', { id: 'type:scene-reference', kind: 'reference', reference_kind: 'lvalue',
@@ -608,12 +623,13 @@ int main() {
   }));
   evidence('overload-selection', 'call:application-update', ['decl:update-frame-forward', 'decl:update'],
     { rule: 'The int argument selects update_scene(int); update_scene() is rejected by arity. Overloading is not overriding.' },
-    [sourceSpan(within('manager.update_scene(frame_id)', ranges.applicationRender))], 'language_rules').attribute_path = 'invokes[0]';
+    [sourceSpan(within('manager.update_scene(frame_id)', ranges.applicationRender))], 'language_rules').attribute_path = 'invokes[1]';
   call('update-frame-dispatch', 'decl:update-frame', 'dispatch_render_pass()', ranges.updateFrame, { target: 'symbol:dispatch', type: 'type:void' });
   symbol('symbol:application-variable', 'application', 'variable', 'symbol:main');
   typedDeclaration('decl:application-variable', 'symbol:application-variable', 'decl:main',
     within('Application application;', ranges.main), 'type:Application');
   declaredTypeUse('application-variable', 'Application', 'type:Application');
+  typeName('application-variable', 'Application', 'Application', 'symbol:Application', 'unqualified');
   const applicationCall = within('application.render(*manager, 42)', ranges.main);
   const managerArgument = namedExpression('expression:application-manager-base', 'decl:main',
     within('manager', applicationCall), 'symbol:manager-variable');
@@ -668,6 +684,21 @@ int main() {
   evidence('dispatch-identity', 'symbol:dispatch', ['decl:dispatch-forward', 'decl:dispatch', 'inventory:descriptor'],
     { rule: 'The out-of-class qualified definition matches the zero-parameter SceneManager member declaration, not a new namespace function.' },
     [sourceSpan(within('void dispatch_render_pass();', ranges.scene)), sourceSpan(ranges.dispatch)], 'language_rules');
+  evidence('update-frame-identity', 'symbol:update-frame', ['decl:update-frame-forward', 'decl:update-frame', 'inventory:descriptor'],
+    { rule: 'The out-of-class qualified definition matches the int-parameter SceneManager member declaration, a distinct overload from update_scene().' },
+    [sourceSpan(within('void update_scene(int frame_id);', ranges.scene)), sourceSpan(ranges.updateFrame)], 'language_rules');
+  const applicationIdentity = evidence('application-render-identity', 'symbol:application-render',
+    ['decl:application-render-forward', 'decl:application-render', 'inventory:viewer-descriptor'],
+    { rule: 'The out-of-class qualified definition matches the Application member declaration with the same parameter types.' },
+    [sourceSpan(within('void render(Engine::SceneManager& manager, int frame_id);', ranges.application)), sourceSpan(ranges.applicationRender)], 'language_rules');
+  applicationIdentity.project_id = 'project:viewer';
+  const globalNamespace = evidence('global-namespace', 'symbol:global', ['decl:Engine', 'decl:Engine-render', 'decl:Application', 'decl:main'],
+    { rule: 'Under C++ rules, declarations outside any namespace belong to the unnamed global namespace, shared by both projects.' }, [], 'language_rules');
+  delete globalNamespace.project_id;
+  globalNamespace.project_independent = true;
+  evidence('Engine-identity', 'symbol:Engine', ['decl:Engine', 'decl:Engine-render', 'inventory:descriptor'],
+    { rule: 'Both namespace Engine blocks reopen one namespace under C++ namespace rules; each file keeps its own declaration.' },
+    [sourceSpan(ranges.engine), sourceSpan(ranges.engineRender)], 'language_rules');
   evidence('cpp-contracts', projectId, ['inventory:example'],
     { assumptions: [
       'Normal C++17 standard headers; no macros replace the displayed project declarations.',
@@ -697,7 +728,7 @@ int main() {
     ]),
     sourceNote: 'Hand-authored C++17 workspace in examples/engine-workspace: viewer depends on the header-only engine library. The repository and commit represent an illustrative Git snapshot; no nested Git repository is required. This is a focused static projection, not analyzer output or an execution trace.',
     steps: [
-      ['Repository', 'Project', 'Directory', 'ProjectFile', 'Import'],
+      ['Repository', 'Project', 'Directory', 'ProjectFile', 'Resource', 'Import'],
       ['Symbol', 'Declaration', 'TypeProfile', 'CallableProfile', 'ParameterProfile'],
       ['Expression'],
       ['TypeExpression', 'TypeUse', 'Declaration', 'Expression', 'Symbol'],

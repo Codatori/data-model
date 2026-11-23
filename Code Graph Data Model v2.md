@@ -4,6 +4,8 @@
 
 This specification defines both layers of the **Unified Software Graph (USG)**, targeting a Neo4j property graph. **Code Facts** preserves observed syntax and supported semantic facts independently of programming language and parser. **Semantic Code Graph** projects those facts into user-facing code organization and dependencies. Sections 2-14 define the supporting Code Facts contract; section 15 defines the Semantic Code Graph schema and its mapping rules. Repository, Project, Directory, ProjectFile, and Resource are shared nodes, not copies per layer.
 
+Every Code Facts node has a `<Node> Relationships` table listing its outgoing relationships and the incoming relationships that place it: membership, file anchor, identity, or profile. Each relationship contract is defined in exactly one table; a row whose meaning begins with "Defined under" lists the same edge for the other endpoint and is not a second relationship or an inverse copy. Relationships whose endpoints span many categories are defined once in their own tables and not repeated per node: direct binding relationships such as REFERS_TO and INVOKES in section 8, semantic edges in section 9, and evidence and diagnostic relationships in section 11.
+
 #### USG Layer Boundaries
 
 | USG Layer | Responsibility | Primary Concepts |
@@ -107,6 +109,14 @@ Permitted variants: `constant(value)`, `defined(name)`, `comparison(operator, op
 
 Git and ZIP datasources are supported. Separate checkouts MUST NOT be merged solely because they share a remote URL. ZIP sources MUST have an identity distinct from Git sources and stable across archive revisions; Codatori uses `zip+file:` for prepared ZIP URIs. Projects are connected through `Repository -HAS_PROJECT-> Project`; duplicated project lists are not stored. For Git, `revision` records the processed commit, not a branch, tag, or abbreviated hash, and does not assert that the working tree is clean. Git incremental processing MUST record the resulting processed commit, not the previous baseline commit. Results retained from earlier commits MUST be reconciled with that revision before publication. ZIP discovery uses full scans; the SHA-256 identifies the archive used during preparation and does not attest to later filesystem contents. Readers that only process Git MUST exclude ZIP records. Discovery configuration, scan policies, and orchestration are outside this model and MAY be stored externally per repository. The dataset contains the resulting structure, not a discovery-run or configuration entity. Results from incompatible repository observations MUST NOT be silently combined into one current structure.
 
+#### Repository Relationships
+
+| Relationship | Source -> target | Edge Properties | Meaning |
+| --- | --- | --- | --- |
+| `HAS_PROJECT` | `Repository -> Project` | None beyond the common structural edge properties defined under Project Relationships. | Repository membership; a repository has 0..many projects and each project exactly one repository. |
+
+A Repository has no direct edges to directories, files, or code facts; they are reached through its projects. Dataset-level Diagnostics MAY reference it through ABOUT.
+
 ### Project
 
 The single minimum boundary of code organization and analysis, identified by a project descriptor such as a `.csproj`, `.vcxproj`, `pom.xml`, or `CMakeLists.txt` file. Build configuration determines the analyzed inputs of that project; no separate Module entity or descriptor-free source-group boundary is introduced.
@@ -130,19 +140,19 @@ A project has one represented set of build metadata in the current snapshot; dif
 
 Discovery produces a forest: a single-project repository has one root; a multi-project repository may have several roots. A parent is established from explicit aggregation metadata or a documented nearest enclosing descriptor rule, recorded in evidence; ambiguous parents remain absent with a diagnostic. Maven aggregation, Maven parent-POM inheritance, physical directory nesting, and dependencies are different facts: `Project -PARENT_OF-> Project` represents only the chosen discovery hierarchy and MUST NOT imply inheritance or a dependency. Projects from other repositories are not same-repository dependencies.
 
-#### Project Edges
+#### Project Relationships
 
 Project membership and dependencies are direct graph edges, not standalone entities or intermediate nodes. They have no canonical `id`. A project depends on another project as `Project -DEPENDS_ON-> Project`.
 
-| Edge | Source -> target | Edge Properties | Meaning |
+| Relationship | Source -> target | Edge Properties | Meaning |
 | --- | --- | --- | --- |
-| `HAS_PROJECT` | `Repository -> Project` | None beyond common structural edge properties. | Repository membership; exactly one repository per project. |
+| `HAS_PROJECT` | `Repository -> Project` | As defined there. | Defined under Repository Relationships; exactly one repository per project. |
 | `PARENT_OF` | `Project -> Project` | None beyond common structural edge properties. | Discovery hierarchy; at most one known parent per project. |
-| `PARENT_OF` | `Directory -> Directory` | None beyond common structural edge properties. | Immediate physical parent; at most one per directory. |
 | `CONTAINS` | `Project -> Directory` or `ProjectFile` | `membership` !: `physical`, `declared`, `both`; `item_role` ?: ecosystem-specific build role; `is_descriptor` ?: Boolean, ProjectFile only; `is_root` ?: Boolean, Directory only. | Explicit project membership; descriptor and base directory roles use this same edge. |
-| `CONTAINS` | `Directory -> ProjectFile` | None beyond common structural edge properties. | Immediate physical directory; at most one per file. |
 | `EXTERNAL` | `Project -> ExternalLibrary` | `requested_version` ?, `scope` ?, `directness` !: `direct`, `transitive`, `unknown`. | External library dependency. |
 | `DEPENDS_ON` | `Project -> Project` | `scope` ?, `reference_kind` ?: ecosystem-specific reference mechanism; `directness` !: `direct`, `transitive`, `unknown`. | Dependency on another project in the same repository. |
+
+Diagnostics that depend on configured language analysis reach their Project through REPORTED_IN, defined under Diagnostic Relationships.
 
 Every structural edge has `state` ! (`established`, `candidate`) and MAY carry `project_id` (`Id -> Project`), `site_file_id` (`Id -> ProjectFile`), and `presence_condition` (`PresenceCondition`). These are edge properties, not another record category. Conditions preserve source/build applicability; unavailable configuration values remain unknown. Embedded evidence belongs to the source node with an `attribute_path` identifying the outgoing edge; no edge or evidence ID is required.
 
@@ -171,6 +181,16 @@ For example, `repo/pom.xml`, `repo/app/pom.xml`, and `repo/core/pom.xml` identif
 | `uri` ! | Normalized URI | Directory location, including linked directories outside the repository when observed. |
 | `name` ! | String | Observed directory name, including the filesystem root name when applicable. |
 
+#### Directory Relationships
+
+| Relationship | Source -> target | Edge Properties | Meaning |
+| --- | --- | --- | --- |
+| `CONTAINS` | `Project -> Directory` | As defined there. | Defined under Project Relationships; explicit project membership, including the root directory role. |
+| `PARENT_OF` | `Directory -> Directory` | None beyond common structural edge properties. | Immediate physical parent; at most one per directory. Acyclic. |
+| `CONTAINS` | `Directory -> ProjectFile` | None beyond common structural edge properties. | Immediate physical directory; at most one per file. |
+
+Directory membership does not implicitly include descendants; each inventoried descendant has its own project CONTAINS edge.
+
 ### ProjectFile
 
 A project file, whether source code, an included header, an imported file, a descriptor, or another inventory entry. This is the single file node category; analysis does not create a second node for the same file.
@@ -188,6 +208,22 @@ Within one dataset there MUST be at most one file or directory node per normaliz
 
 SourceSpan is an embedded coordinate value attached to a fact, evidence entry, or diagnostic, never a graph node or a standalone relationship target. Its file endpoint is the actual ProjectFile. Native scalar coordinates use the incoming file relationship as their source-version anchor: IMPORTS for Import, ANNOTATES for Annotation, and CONSISTS_OF for Declaration, Expression, and TypeUse. Do not add a reverse LOCATED_IN copy. Diagnostic retains LOCATED_IN for its primary location. Symbol locations are obtained through HAS_DECLARATION and the declaration's file membership; a logical symbol can have several written occurrences.
 
+#### ProjectFile Relationships
+
+| Relationship | Source -> target | Edge Properties | Meaning |
+| --- | --- | --- | --- |
+| `CONTAINS` | `Project -> ProjectFile` | As defined there. | Defined under Project Relationships; explicit project membership, including the descriptor role. A shared file may belong to several projects. |
+| `CONTAINS` | `Directory -> ProjectFile` | As defined there. | Defined under Directory Relationships; at most one immediate physical directory. |
+| `CLASSIFIES` | `Resource -> ProjectFile` | As defined there. | Defined under Resource Relationships; at most one Resource per file. |
+| `CONSISTS_OF` | `ProjectFile -> Declaration` | As defined there. | Defined under Declaration Relationships; file anchor and source version of every declaration occurrence. |
+| `CONSISTS_OF` | `ProjectFile -> Expression` | As defined there. | Defined under Expression Relationships; file anchor and source version of every expression occurrence. |
+| `CONSISTS_OF` | `ProjectFile -> TypeUse` | As defined there. | Defined under TypeUse Relationships; file anchor and source version of every written type occurrence. |
+| `IMPORTS` | `ProjectFile -> Import` | As defined there. | Defined under Import Relationships; containing file of the directive, not its resolved provider. |
+| `ANNOTATES` | `ProjectFile -> Annotation` | As defined there. | Defined under Annotation Relationships; file anchor with optional same-file application targets. |
+| `EXPORTS` | `ProjectFile -> Symbol` | As defined there. | Defined under Semantic Edges; file-level export of a Symbol. |
+
+A ProjectFile is also the target of IMPORTS_FROM, EVIDENCE_SOURCE, LOCATED_IN, and RELATED_LOCATION, defined in sections 9 and 11.
+
 ### Resource
 
 An inventoried non-code artifact, such as a descriptor, configuration, document, image, or binary asset. Resource and its ProjectFile are shared across both layers. ProjectFile is the file identity and sole owner of its URI, content reference, and physical placement; Resource adds a classification, not a second file record.
@@ -197,7 +233,9 @@ An inventoried non-code artifact, such as a descriptor, configuration, document,
 | `kind` ! | `descriptor`, `configuration`, `documentation`, `image`, `binary`, `other` | Supported non-code classification under the inventory policy. |
 | `media_type` ? | MIME type | Observed media type, when known. |
 
-| Edge | Source -> target | Edge Properties | Meaning |
+#### Resource Relationships
+
+| Relationship | Source -> target | Edge Properties | Meaning |
 | --- | --- | --- | --- |
 | `CLASSIFIES` | Resource -> ProjectFile | None. | Exactly one backing file per Resource and at most one Resource per file in the same snapshot. Traverse the file's CONTAINS edges for project membership and directory placement. |
 
@@ -214,6 +252,14 @@ Resource identity is based on the backing file. Generated non-code artifacts may
 | `identity_state` ! | `established`, `provisional` | Confirmed artifact identity or an unresolved external dependency. |
 
 Different versions, registries, or incompatible artifact variants MUST NOT be merged solely by name. An unresolved declaration MAY reference a provisional library preserving the observed coordinates without fabricated values. Requested versions and dependency scopes belong to the relationship; the resolved library version belongs here. Library nodes do not require downloaded source, a `ProjectFile`, or symbols. Transitive libraries MAY be included only with supporting dependency-resolution evidence and explicit completeness boundaries.
+
+#### ExternalLibrary Relationships
+
+| Relationship | Source -> target | Edge Properties | Meaning |
+| --- | --- | --- | --- |
+| `EXTERNAL` | `Project -> ExternalLibrary` | As defined there. | Defined under Project Relationships; requested version, scope, and directness belong to this edge, not the library node. |
+
+An ExternalLibrary has no outgoing structural relationships, files, or required Symbols. External symbols obtained from it are ordinary Symbol nodes with origin `external`.
 
 #### Project Analysis Boundary
 
@@ -339,10 +385,14 @@ Absent visibility or linkage means unrecorded or unknown, not public accessibili
 
 | Relationship | Source -> target | Cardinality | Meaning |
 | --- | --- | --- | --- |
-| `HAS_DECLARATION` | `Symbol -> Declaration` | Symbol: 0..many occurrences; Declaration: exactly 1 symbol. | Logical identity of this occurrence; the same relationship as in the Symbol section, not a duplicate inverse edge. |
+| `HAS_DECLARATION` | `Symbol -> Declaration` | Symbol: 0..many occurrences; Declaration: exactly 1 symbol. | Defined under Symbol Relationships; logical identity of this occurrence, not a duplicate inverse edge. |
 | `CONSISTS_OF` | `ProjectFile -> Declaration` | File: 0..many declarations; Declaration: exactly 1 file anchor. | File membership and source-version anchor of every occurrence, including nested or file-associated implicit declarations. Recorded offsets use this file's versioned content. |
 | `CONTAINS_DECLARATION` | `Declaration -> Declaration` | Parent: 0..many immediate children; child: 0..1 nearest declaration parent. | Immediate syntactic declaration nesting within the same project. Acyclic, without fabricated declarations for blocks. Top-level declarations have no declaration parent but still belong to their actual file. |
 | `HAS_INITIALIZER` | `Declaration -> Expression` | Declaration: 0..1 initializer; expression: 0..many associated declarations. | Variable, field, or enum value initializer, or a parameter default at this occurrence. The expression belongs to the same project. Not a function body, selected constructor, or runtime initialization event. |
+| `CONSISTS_OF` | `Declaration -> TypeUse` | Declaration: 0..many written type occurrences. | Defined under TypeUse Relationships; syntactic owner with a required role, separate from the file anchor. |
+| `CONTAINS_EXPRESSION` | `Declaration -> Expression` | Declaration: 0..many nearest-contained expressions. | Defined under Expression Relationships; nearest containing declaration. |
+| `CONTAINS_IMPORT` | `Declaration -> Import` | Declaration: 0..many nearest-contained directives. | Defined under Import Relationships; absent for file-level directives. |
+| `CONTAINS_ANNOTATION` | `Declaration -> Annotation` | Declaration: 0..many nearest-associated applications. | Defined under Annotation Relationships; lexical association, not the application target. |
 | `HAS_TYPE` | `Declaration -> TypeExpression` | 0..many contextual results. | Available declared, inferred, return, receiver, or constraint type, with role, state, and context preserved as specified in section 6. No type result is required for every declaration kind. |
 
 Every Declaration has exactly one incoming HAS_DECLARATION relationship and exactly one incoming CONSISTS_OF from its file anchor. Project membership is obtained through that file, not a direct project edge. File membership and nearest-parent nesting are different facts, not duplicated transitive containment. The file edge is also the source-version anchor; no reverse LOCATED_IN is stored. Do not store additional ancestor-to-descendant declaration edges or a parallel parent-ID property.
@@ -360,14 +410,20 @@ A separately identified node describing `Symbol(kind: callable)`, connected by i
 | Attribute | Type | Purpose |
 | --- | --- | --- |
 | `callable_kind` ! | `function`, `method`, `constructor`, `destructor`, `lambda`, `operator`, `accessor`, `local_function` | Callable semantics. |
-| `parameter_ids` ! | Ordered list of `Id -> Symbol(parameter)` | Explicit formal parameters. |
-| `type_parameter_ids` ! | Ordered list of `Id -> Symbol(type_parameter)` | Generic or template parameters. |
 | `receiver_mode` ? | `none`, `instance`, `extension`, `explicit_object`, `language_specific` | Receiver semantics without adding implicit `this` to explicit parameters. |
 | `variadic_style` ? | `none`, `ellipsis`, `parameter_pack`, `rest`, `keyword_rest` | Variable argument count. |
 | `calling_convention` ? | String | ABI and function compatibility. |
 | `receiver_qualifiers` ! | Set of values | Member const/volatile and lvalue/rvalue ref qualifiers. |
 
-Parameter count is computed from the list; there is no separate `arity`. The signature consists of parameters, type bindings, return type, receiver qualifiers, and language-specific generic rules. Repeated parameter declarations refer to one parameter symbol only when their correspondence is established; occurrence-local spelling is read from the corresponding Declaration's name offsets in its incoming file CONSISTS_OF source version, not a copied Symbol name.
+#### CallableProfile Relationships
+
+| Relationship | Source -> target | Cardinality | Meaning |
+| --- | --- | --- | --- |
+| `HAS_PROFILE` | `Symbol(callable) -> CallableProfile` | Profile: exactly 1 owning Symbol. | Defined under Symbol Relationships; available callable details. |
+| `HAS_PARAMETER` | `CallableProfile -> Symbol(parameter)` | Profile: 0..many ordered entries; parameter: 0..1 profile. | Explicit formal parameter with a required zero-based, contiguous `position`. Not an argument Expression or an implicit receiver. |
+| `HAS_TYPE_PARAMETER` | `CallableProfile -> Symbol(type_parameter)` | Profile: 0..many ordered entries. | Generic or template parameter with a required zero-based, contiguous `position`. |
+
+Portable `parameter_ids` ! and `type_parameter_ids` ! are ordered endpoint notation for HAS_PARAMETER and HAS_TYPE_PARAMETER, not native node properties; list indices supply `position`, and an empty list in a profile records no parameters. Parameter count is computed from these relationships; there is no separate `arity`. The signature consists of parameters, type bindings, return type, receiver qualifiers, and language-specific generic rules. Repeated parameter declarations refer to one parameter symbol only when their correspondence is established; occurrence-local spelling is read from the corresponding Declaration's name offsets in its incoming file CONSISTS_OF source version, not a copied Symbol name.
 
 ### ParameterProfile
 
@@ -378,7 +434,15 @@ A separately identified node describing `Symbol(kind: parameter)`, connected by 
 | `binding_kind` ! | `positional`, `positional_only`, `keyword_only`, `rest`, `keyword_rest`, `pack` | Argument binding. |
 | `passing_mode` ? | `value`, `reference`, `in`, `out`, `inout`, `language_specific` | Value passing and write effects. |
 
-A default belongs to the particular parameter Declaration through HAS_INITIALIZER to its Expression: defaults in different declarations may have different values and visibility. The fixture's initializer_expression_id is portable endpoint notation only. The parameter index is determined by the position in CallableProfile.parameter_ids in portable data, mapped to an ordered relationship in Neo4j.
+A default belongs to the particular parameter Declaration through HAS_INITIALIZER to its Expression: defaults in different declarations may have different values and visibility. The fixture's initializer_expression_id is portable endpoint notation only. The parameter index is the `position` of the incoming CallableProfile HAS_PARAMETER relationship to the parameter Symbol; portable data encodes it as the index in CallableProfile.parameter_ids.
+
+#### ParameterProfile Relationships
+
+| Relationship | Source -> target | Cardinality | Meaning |
+| --- | --- | --- | --- |
+| `HAS_PROFILE` | `Symbol(parameter) -> ParameterProfile` | Profile: exactly 1 owning Symbol. | Defined under Symbol Relationships; available explicit parameter details. |
+
+ParameterProfile has no outgoing relationships. Parameter order belongs to CallableProfile HAS_PARAMETER, and defaults belong to the parameter Declaration HAS_INITIALIZER.
 
 ### TypeProfile
 
@@ -387,9 +451,15 @@ A separately identified node describing `Symbol(kind: type)`, connected by incom
 | Attribute | Type | Purpose |
 | --- | --- | --- |
 | `type_kind` ! | `class`, `struct`, `interface`, `trait`, `enum`, `union`, `alias`, `record`, `annotation`, `language_specific` | Type declaration semantics. |
-| `type_parameter_ids` ! | Ordered list of `Id -> Symbol(type_parameter)` | Generic parameters. |
 
-Fields, methods, enum values, and nested types are connected by outgoing OWNS relationships from their owning Symbol; a duplicated member-ID list is not stored. Inheritance, alias targets, and enum underlying types are represented by direct semantic relationships, not by OWNS.
+#### TypeProfile Relationships
+
+| Relationship | Source -> target | Cardinality | Meaning |
+| --- | --- | --- | --- |
+| `HAS_PROFILE` | `Symbol(type) -> TypeProfile` | Profile: exactly 1 owning Symbol. | Defined under Symbol Relationships; available declared-type details. |
+| `HAS_TYPE_PARAMETER` | `TypeProfile -> Symbol(type_parameter)` | Profile: 0..many ordered entries. | Generic parameter with a required zero-based, contiguous `position`. |
+
+Portable `type_parameter_ids` ! is ordered endpoint notation for HAS_TYPE_PARAMETER, not a native node property; list indices supply `position`. Fields, methods, enum values, and nested types are connected by outgoing OWNS relationships from their owning Symbol; a duplicated member-ID list is not stored. Inheritance, alias targets, and enum underlying types are represented by direct semantic relationships, not by OWNS.
 
 TypeProfile describes the declared type symbol, not every structure that uses it. One type symbol can participate in many pointer, reference, array, qualified, or generic TypeExpression structures. Built-in and composite TypeExpression values do not require a separate TypeProfile.
 
@@ -435,10 +505,10 @@ For `const T*`, the pointer layer has an empty qualifier set and its nominal T e
 
 | Relationship | Source -> target | Cardinality | Meaning |
 | --- | --- | --- | --- |
-| `HAS_TYPE` | `Declaration -> TypeExpression` | 0..many contextual results. | Type of a declaration or callable return/receiver/constraint as specified in section 6; the existing relationship, not another stored copy. |
-| `HAS_TYPE` | `Expression -> TypeExpression` | 0..many contextual results. | Result type of an actual expression, including inferred results with no written TypeUse. |
-| `HAS_TYPE` | `Symbol -> TypeExpression` | 0..many contextual results, only without available declarations. | Fallback for known external or intrinsic type information, not a declaration-type summary. |
-| `HAS_TYPE` | `TypeUse -> TypeExpression` | 0..many contextual results. | Semantic meaning established or considered for an actual written occurrence. |
+| `HAS_TYPE` | `Declaration -> TypeExpression` | 0..many contextual results. | Defined under Declaration Relationships; type of a declaration or callable return/receiver/constraint. |
+| `HAS_TYPE` | `Expression -> TypeExpression` | 0..many contextual results. | Defined under Expression Relationships; result type of an actual expression. |
+| `HAS_TYPE` | `Symbol -> TypeExpression` | 0..many contextual results, only without available declarations. | Defined under Symbol Relationships; fallback for known external or intrinsic type information. |
+| `HAS_TYPE` | `TypeUse -> TypeExpression` | 0..many contextual results. | Defined under TypeUse Relationships; semantic meaning of an actual written occurrence. |
 | `REFERS_TO` | `TypeExpression -> Symbol` | 0..1 identity target. | Nominal types target Symbol(type); type_parameter targets Symbol(type_parameter). A dependent type may reference an established relevant symbol. Not a direct connection to TypeProfile. |
 | `HAS_ELEMENT_TYPE` | `TypeExpression -> TypeExpression` | Exactly 1 for pointer, reference, nullable, and array. | Immediate wrapped or element type, preserving each structural layer. |
 | `HAS_PARAMETER_TYPE` | `TypeExpression -> TypeExpression` | Function: 0..many ordered entries. | Explicit function-type parameter types, with a required zero-based position per parameter. These targets are types, not Symbol(parameter) nodes. |
@@ -558,8 +628,8 @@ An actual source expression occurrence, not a semantic type, a logical symbol, o
 | `CONTAINS_EXPRESSION` | Declaration -> Expression | Expression: 0..1 nearest declaration | Nearest containing declaration; absent for file-level expressions. Not an edge from the caller Symbol or an outer call. |
 | `HAS_OPERAND` | Expression -> Expression | 0..N ordered operands | Required `role` and zero-based `position`, unique per source expression across roles; e.g. base, left, right, target, value, test, then, else, element, operand. |
 | `INTRODUCES` | Expression -> Symbol | Expression: 0..1 callable | Callable identity introduced by a lambda or function expression, not a call to its body. |
-| `HAS_TYPE` | Expression -> TypeExpression | 0..N contextual results | Result type; edge properties are defined in section 6. |
-| `HAS_TYPE_USE` | Expression -> TypeUse | 0..N source type spellings | Syntactic `role` and optional ordered `position`, as defined in section 6. |
+| `HAS_TYPE` | Expression -> TypeExpression | 0..N contextual results | Result type of the actual expression, including inferred results with no written TypeUse; edge properties are defined in section 6. |
+| `HAS_TYPE_USE` | Expression -> TypeUse | 0..N source type spellings | Defined under TypeUse Relationships; syntactic `role` and optional ordered `position`. |
 
 Syntax relationships MUST be acyclic and preserve actual occurrences and source order, not execution order. Non-body operands and the callee/arguments of one call belong to the same project, file, and nearest declaration as that expression. Calls and constructions MUST NOT duplicate their callee and arguments as HAS_OPERAND edges. A member-access receiver remains its base operand. Lambda body expressions belong to the introduced callable's Declaration, not to the declaration containing the lambda expression.
 
@@ -720,6 +790,7 @@ Annotation is not a Symbol kind: a declared annotation class or decorator functi
 | `ANNOTATES` | Annotation -> Declaration | 0..N known declaration targets | Required role: declaration, return, or language_specific; required position orders applications for the same target, role, and file. Parameters use their own Declaration. Same-file and assembly targets belong to the incoming file edge, not a reverse relationship. |
 | `HAS_ARGUMENT` | Annotation -> Expression | 0..N ordered entries | Required position; optional name for a named argument. Actual source values, not evaluated copies. |
 | `HAS_APPLICATION_EXPRESSION` | Annotation -> Expression | 0..1 | The actual written decorator/application expression when it is an expression in the language. |
+| `HAS_TYPE_USE` | Annotation -> TypeUse | 0..N annotation-local type spellings | Defined under TypeUse Relationships; actual written type syntax within the application. |
 
 Portable file_id, declaration_id, span, targets (target_id, role, position), arguments (expression_id, optional name), and application_expression_id encode the relationships, not native node properties. A target whose target_id is the containing file maps to file_targets_json on its single incoming file ANNOTATES edge; declaration targets map to outgoing ANNOTATES edges. The JSON contains only role and position, since the file endpoint already supplies identity. Complete application means at least one known target across both representations. Argument list indices supply position. The optional declaration_id is the nearest associated declaration, not the sole annotation target. File/assembly applications can have no declaration association; assembly role uses the containing ProjectFile as the source anchor, not an invented assembly Declaration. Application positions are unique per target/role/file and preserve source order, not a universal execution order. Multiple explicit targets support languages where one written application affects several declarations. Unresolved or unsupported targets are omitted rather than fabricated; a material recovery problem may be reported by a shared Diagnostic.
 
@@ -831,6 +902,8 @@ An independently addressable issue or informative message, not evidence that a f
 | `code` ! | Stable producer-namespaced string | Machine-readable issue class; consumers do not parse message text. |
 | `message` ! | String | Human-readable description. |
 | `attribute_path` ? | AttributePath | Particular fact at the primary subject, when relevant. |
+
+#### Diagnostic Relationships
 
 | Relationship | Source -> target | Cardinality | Meaning |
 | --- | --- | --- | --- |

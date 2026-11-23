@@ -67,6 +67,8 @@
   const entityPattern = new RegExp(`\\b(${entities.map(entity => entity.name).sort((a, b) => b.length - a.length).join('|')})\\b`, 'g');
   const escape = text => String(text).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
   const strip = text => text.replace(/[`*]/g, '').trim();
+  // A "Defined under" row lists an edge for its other endpoint; the defining row is the single contract.
+  const crossListed = cells => cells[3].startsWith('Defined under');
   const links = [];
   function addLink(from, to, field, description, kind = 'reference') {
     if (!byName.has(to)) return;
@@ -76,7 +78,7 @@
   }
   for (const line of source.split('\n').filter(line => line.startsWith('|'))) {
     const cells = line.split('|').slice(1, -1).map(strip);
-    if (cells.length !== 4 || !/^[A-Z][A-Z_]+$/.test(cells[0]) || !cells[1].includes('->')) continue;
+    if (cells.length !== 4 || !/^[A-Z][A-Z_]+$/.test(cells[0]) || !cells[1].includes('->') || crossListed(cells)) continue;
     const [from, to] = cells[1].split('->');
     for (const origin of from.matchAll(entityPattern)) {
       for (const target of to.matchAll(entityPattern)) addLink(origin[0], target[0], cells[0], `${cells[2]} ${cells[3]}`);
@@ -643,7 +645,7 @@
     const nativeFamilies = sections.map(section => ({ ...section,
       rows: section.markdown.split('\n').filter(line => {
         const cells = line.split('|').slice(1, -1).map(strip);
-        return cells.length === 4 && /^[A-Z][A-Z_]+$/.test(cells[0]) && cells[1].includes('->');
+        return cells.length === 4 && /^[A-Z][A-Z_]+$/.test(cells[0]) && cells[1].includes('->') && !crossListed(cells);
       })
     })).filter(section => section.rows.length);
     const factFamilies = nativeFamilies.filter(section => section.number < 15);

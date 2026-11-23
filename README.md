@@ -428,6 +428,9 @@ short summaries and references not explicitly typed in the tables live in
 `app.js` and should be reviewed when the schema changes.
 `structural-dependencies.js` derives the example's relationship views from its
 canonical records; these views are never added to its canonical JSON.
+`semantic-projection.js` projects those records into the Semantic Code Graph of
+section 15 (Module, Namespace, Unit, Member, their relationships, DERIVED_FROM
+provenance, and the publication envelope) for the example graph's semantic view.
 
 To serve the page over HTTP instead of opening the file directly:
 
