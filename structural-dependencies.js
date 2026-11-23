@@ -36,19 +36,24 @@
       if (!fileId || get(fileId).category !== 'ProjectFile') throw new Error(`No structural owner for ${id}`);
       return fileId;
     }
+    // The unnamed global namespace owns top-level entities but is neither a component nor a qualified-name part.
+    function semanticParent(record) {
+      const parent = record.owner_symbol_id ? get(record.owner_symbol_id) : null;
+      return parent && !(parent.kind === 'namespace' && !parent.name && !parent.owner_symbol_id) ? parent : null;
+    }
     function component(id) {
       let record = get(id), callable, root = id;
       while (record) {
         root = record.id;
         if (record.category !== 'Symbol' || record.kind === 'type') return record.id;
         if (record.kind === 'callable') callable = record.id;
-        record = record.owner_symbol_id ? get(record.owner_symbol_id) : null;
+        record = semanticParent(record);
       }
       return callable || root;
     }
     function name(id) {
       const parts = [];
-      for (let record = get(id); record; record = record.owner_symbol_id ? get(record.owner_symbol_id) : null) {
+      for (let record = get(id); record; record = semanticParent(record)) {
         parts.unshift(record.name || record.id);
       }
       if (parts[0] === 'Engine' && parts.length > 1) parts.shift();
@@ -207,7 +212,7 @@
         evidenceInProject(item, record.project_id) && item.attribute_path &&
         (matchesEdge(item.attribute_path) || conditionSupport(item.attribute_path)));
       edges.push({
-        from, to, kind, certainty, project_id: record.project_id,
+        from, to, kind, certainty, project_id: record.project_id, site_id: siteId,
         ...embeddedEdge,
         ...(embeddedEdge ? { details: record.details, semantic_properties: record.semantic_properties } : {}),
         candidate_set_completeness: record.candidate_set_completeness,

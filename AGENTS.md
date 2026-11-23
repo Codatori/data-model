@@ -5,6 +5,6 @@
 - This is an offline, dependency-free HTML/CSS/JavaScript app. Open [index.html](index.html) directly; no server or package installation is required.
 - [app.js](app.js) provides the structure explorer, guided walkthrough, semantic relations, and full specification views.
 - After specification edits, run `node build-model.mjs` to regenerate [model-data.js](model-data.js); review summaries and supplemental references in [app.js](app.js). Do not edit generated data manually.
-- [example-model.js](example-model.js) contains hand-authored C++ teaching records, not analyzer output. [structural-dependencies.js](structural-dependencies.js) derives dependency views, not canonical entities. Validate examples with `node --test example-model.test.mjs`.
+- [example-model.js](example-model.js) contains hand-authored C++ teaching records, not analyzer output. [structural-dependencies.js](structural-dependencies.js) derives dependency views, not canonical entities. [semantic-projection.js](semantic-projection.js) derives the section 15 Semantic Code Graph projection shown by [example-graph.js](example-graph.js). Validate examples with `node --test example-model.test.mjs`.
 - Keep explanations, diagrams, and examples faithful to the specification: distinguish syntax from semantics and established from possible dependencies; do not imply runtime execution.
 - Preserve the lightweight offline design, readable presentation, and semantic theme tokens in [themes.css](themes.css). See [README.md](README.md) for usage and maintenance details.

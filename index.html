@@ -11,7 +11,10 @@
   <script src="model-data.js" defer></script>
   <script src="example-model.js" defer></script>
   <script src="structural-dependencies.js" defer></script>
+  <script src="semantic-projection.js" defer></script>
   <script src="app.js" defer></script>
+  <script src="vendor/d3.min.js" defer></script>
+  <script src="example-graph.js" defer></script>
 </head>
 <body>
   <header class="header">
@@ -20,6 +23,7 @@
       <button class="nav-button active" data-view="explorer" aria-pressed="true">Explore the model</button>
       <button class="nav-button" data-view="walkthrough" aria-pressed="false">Guided walkthrough</button>
       <button class="nav-button" data-view="semantics" aria-pressed="false">Relations</button>
+      <button class="nav-button" data-view="example" aria-pressed="false">Example graph</button>
       <button class="nav-button" data-view="specification" aria-pressed="false">Full specification</button>
     </nav>
     <label class="theme-picker" for="theme-picker"><span>Theme</span><select id="theme-picker" aria-label="Color theme"><option value="zen-graph">Zen Graph · light</option><option value="midnight-satori">Midnight Satori · dark</option></select></label>
@@ -71,6 +75,29 @@
     </section>
     <section id="walkthrough-view" class="view" hidden>
       <div class="tour-layout"><aside><div class="eyebrow">FOLLOW THE C++ DEPENDENCIES</div><h2>From spelling<br>to structure.</h2><p>Engine’s SceneManager and RenderContext, an illustrative model result, and six steps connecting the two. Inspect focused source excerpts, record cards, JSON, and derived component relationships. Execution is not assessed.</p><ol id="tour-steps"></ol></aside><div id="tour-content" class="tour-content"></div></div>
+    </section>
+    <section id="example-view" class="view" hidden aria-labelledby="eg-title">
+      <div class="eg-layout">
+        <div class="eg-main">
+          <div class="eg-toolbar"><div><div id="eg-eyebrow" class="eyebrow">EVERY RECORD AND REFERENCE</div><h2 id="eg-title">Example graph</h2></div><div class="eg-switch" role="group" aria-label="Graph view"><button class="eg-switch-button active" data-eg-graph="code" aria-pressed="true">Code graph</button><button class="eg-switch-button" data-eg-graph="semantic" aria-pressed="false">Semantic graph</button></div><button id="eg-reset" class="text-button">Reset view ↺</button></div>
+          <div id="eg-canvas" class="eg-canvas"><div id="eg-tip" class="eg-tip" hidden></div></div>
+          <div class="eg-bottom">
+            <div class="eg-sp">
+              <div class="eg-tabs" role="tablist" aria-label="Side panel">
+                <button class="eg-tab active" role="tab" id="eg-tab-element" data-eg-tab="element" aria-selected="true" aria-controls="eg-panel">Active element</button>
+                <button class="eg-tab" role="tab" id="eg-tab-source" data-eg-tab="source" aria-selected="false" aria-controls="eg-source">Source code</button>
+              </div>
+              <div id="eg-panel" class="eg-panel" role="tabpanel" aria-labelledby="eg-tab-element" aria-live="polite"></div>
+              <div id="eg-source" class="eg-panel eg-source" role="tabpanel" aria-labelledby="eg-tab-source" hidden></div>
+            </div>
+            <div class="eg-filters" aria-label="Filters">
+              <label class="eg-search"><span aria-hidden="true">⌕</span><input id="eg-search" type="search" placeholder="Search by name or id…" aria-label="Fuzzy search records by name or id" autocomplete="off"><small id="eg-search-count"></small></label>
+              <section><div class="eg-filter-head"><strong>Records</strong><button class="text-button" data-eg-set="categories" data-eg-mode="all">Select all</button><button class="text-button" data-eg-set="categories" data-eg-mode="none">Deselect all</button></div><div id="eg-legend" class="eg-legend" aria-label="Filter record categories"></div></section>
+              <section><div class="eg-filter-head"><strong>Relations</strong><button class="text-button" data-eg-set="types" data-eg-mode="all">Select all</button><button class="text-button" data-eg-set="types" data-eg-mode="none">Deselect all</button><small>File anchors, evidence, and diagnostic links start hidden</small></div><div id="eg-relations" class="eg-legend" aria-label="Filter relation types"></div></section>
+            </div>
+          </div>
+        </div>
+      </div>
     </section>
     <section id="specification-view" class="view" hidden>
       <div class="spec-layout"><aside><div class="eyebrow">THE SOURCE OF TRUTH</div><h2>Full specification</h2><p>All descriptions, attributes, rules, and conformance requirements from the Code Graph Data Model.</p><nav id="spec-toc" aria-label="Specification sections"></nav></aside><article id="spec-content" class="prose"></article></div>

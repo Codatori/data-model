@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 const context = { window: {}, TextEncoder, TextDecoder };
 runInNewContext(readFileSync(new URL('example-model.js', import.meta.url), 'utf8'), context);
 runInNewContext(readFileSync(new URL('structural-dependencies.js', import.meta.url), 'utf8'), context);
+runInNewContext(readFileSync(new URL('semantic-projection.js', import.meta.url), 'utf8'), context);
 runInNewContext(readFileSync(new URL('model-data.js', import.meta.url), 'utf8'), context);
 const example = context.window.CODE_GRAPH_EXAMPLE;
 const { model, code } = example;
@@ -1506,7 +1507,7 @@ test('semantic guide renders all direct edge labels as source-node excerpts with
   const [factSpec, projectionSpec] = spec.split('## 15. Semantic Code Graph');
   for (const [layerSpec, rendered] of [[factSpec, facts], [projectionSpec, projection]]) {
     const rows = layerSpec.split('\n').map(line => line.split('|').slice(1, -1).map(cell => cell.replace(/[`*]/g, '').trim()))
-      .filter(cells => cells.length === 4 && /^[A-Z][A-Z_]+$/.test(cells[0]) && cells[1].includes('->'));
+      .filter(cells => cells.length === 4 && /^[A-Z][A-Z_]+$/.test(cells[0]) && cells[1].includes('->') && !cells[3].startsWith('Defined under'));
     assert(rows.length > 0);
     for (const [label, endpoints] of rows) {
       assert(rendered.includes(`<code>${label}</code>`), `Missing ${label}`);
@@ -1602,4 +1603,94 @@ test('optional node semantic properties preserve values and contexts without ext
     assert.equal(view.byId.get(property.project_id).category, 'Project');
     if (['unknown', 'not_applicable'].includes(property.state)) assert.equal(property.value, null);
   }
+});
+
+const project = model => context.window.CODE_GRAPH_SEMANTIC_PROJECTION({ ...example, model, relationships: example.relationships });
+const edgesOf = (projection, type) => projection.relationships.filter(edge => edge.type === type);
+
+test('semantic projection places every entity under the global namespace and links it to its Code Facts identity', () => {
+  const projection = project(model);
+  const { Namespace, Unit, Member } = projection.nodes;
+  const global = Namespace.find(node => node.kind === 'cpp_global');
+  assert(global && !('qualified_name' in global));
+  const owned = edgesOf(projection, 'CONSISTS_OF').filter(edge => edge.source_id === global.id).map(edge => edge.target_id).sort();
+  assert.equal(JSON.stringify(owned), JSON.stringify(['namespace:Engine', 'unit:Application', 'unit:main']));
+  assert(!Unit.concat(Member).some(node => /manager-variable|context-variable|application-variable|std/.test(node.id)), 'Locals and std are excluded by policy');
+  assert(projection.envelope.excluded_categories.some(item => item.includes('local variables')));
+  assert.equal(projection.envelope.completeness, 'partial');
+  const derived = edgesOf(projection, 'DERIVED_FROM');
+  for (const node of [...Namespace, ...Unit, ...Member]) {
+    const links = derived.filter(edge => edge.source_id === node.id);
+    assert.equal(links.length, 1, `${node.id} has one DERIVED_FROM`);
+    assert.equal(model.Symbol.find(symbol => symbol.id === links[0].target_id)?.id, links[0].target_id);
+  }
+  const owner = new Map(edgesOf(projection, 'CONSISTS_OF').map(edge => [edge.target_id, edge.source_id]));
+  for (const member of Member) {
+    let current = member.id;
+    for (const seen = new Set(); current.startsWith('member:'); current = owner.get(current)) {
+      assert(!seen.has(current), 'Ownership is acyclic');
+      seen.add(current);
+    }
+    assert(current.startsWith('unit:'), `${member.id} reaches a Unit`);
+  }
+  const parameters = edgesOf(projection, 'CONSISTS_OF').filter(edge => edge.source_id === 'member:application-render');
+  assert.equal(JSON.stringify(parameters.map(edge => [edge.target_id, edge.position])), JSON.stringify([['member:application-manager', 0], ['member:application-frame', 1]]));
+});
+
+test('semantic projection edges carry scalar typed values, state, context, and exact supporting facts', () => {
+  const projection = project(model);
+  for (const edge of projection.relationships) {
+    for (const field of ['reason', 'access', 'usage', 'project_id']) assert(!Array.isArray(edge[field]), `${edge.type} ${field} is scalar`);
+    if (!['HAS_PROJECT', 'CONTAINS', 'PARENT_OF', 'DEPENDS_ON', 'CLASSIFIES'].includes(edge.type)) {
+      assert(['established', 'candidate'].includes(edge.state));
+      assert(edge.supporting_facts.length > 0, `${edge.type} retains supporting facts`);
+    }
+  }
+  const depends = edgesOf(projection, 'DEPENDS').filter(edge => edge.source_id === 'unit:SceneManager' && edge.target_id === 'unit:RenderContext');
+  assert.equal(depends.map(edge => edge.reason).sort().join(), 'field_type,parameter_type');
+  const conditional = edgesOf(projection, 'INVOKES').find(edge => edge.source_id === 'member:dispatch');
+  assert.equal(conditional.occurrences[0].call_condition.predicate.expression_id, 'condition:dispatch');
+  assert(conditional.evidence_refs.some(ref => ref.attribute_path === 'condition'));
+  assert(!edgesOf(projection, 'INVOKES').some(edge => edge.source_id === 'member:application-render' && edge.target_id === 'member:update'),
+    'A rejected overload produces no INVOKES');
+  assert.equal(edgesOf(projection, 'DECLARES').filter(edge => edge.target_id === 'member:update-frame').length, 2,
+    'Declaration and out-of-class definition files both declare the Member');
+  assert(projection.relationships.some(edge => edge.type === 'CLASSIFIES' && edge.source_id === 'resource:descriptor' && edge.target_id === 'inventory:descriptor'));
+});
+
+test('semantic projection maps inheritance, contracts, overrides, captures, candidates, and module imports', () => {
+  const copy = JSON.parse(JSON.stringify(model));
+  const symbol = (id, name, kind, owner) => copy.Symbol.push({ id, name, kind, owner_symbol_id: owner, origin: 'source', identity_state: 'established' });
+  symbol('symbol:Pass', 'Pass', 'type', 'symbol:Engine');
+  symbol('symbol:Pass-run', 'run', 'callable', 'symbol:Pass');
+  copy.TypeProfile.push({ id: 'profile:Pass', symbol_id: 'symbol:Pass', type_kind: 'interface', type_parameter_ids: [] });
+  copy.CallableProfile.push({ id: 'profile:Pass-run', symbol_id: 'symbol:Pass-run', callable_kind: 'method', parameter_ids: [],
+    type_parameter_ids: [], receiver_qualifiers: [] });
+  copy.TypeExpression.push({ id: 'type:Pass', kind: 'nominal', symbol_id: 'symbol:Pass', qualifiers: [], completeness: 'complete' });
+  const find = id => copy.Symbol.find(record => record.id === id);
+  find('symbol:SceneManager').implements = [{ target_id: 'type:Pass', project_id: 'project:example', state: 'established' }];
+  find('symbol:RenderContext').inherits = [{ target_id: 'type:SceneManager', project_id: 'project:example', state: 'candidate' }];
+  find('symbol:update').overrides = [{ target_id: 'symbol:Pass-run', project_id: 'project:example', state: 'established' }];
+  find('symbol:execute').captures = [{ target_id: 'symbol:frame-id', project_id: 'project:example', state: 'established' }];
+  symbol('symbol:mod-app', 'app', 'module');
+  symbol('symbol:mod-engine', 'engine', 'module');
+  copy.Declaration.push({ id: 'decl:mod-app', symbol_id: 'symbol:mod-app', file_id: 'inventory:viewer', form: 'declaration', modifiers: [] },
+    { id: 'decl:mod-engine', symbol_id: 'symbol:mod-engine', file_id: 'inventory:example', form: 'declaration', modifiers: [] });
+  copy.Import.find(record => record.id === 'import:Engine').imports_from[0].target_id = 'symbol:mod-engine';
+  const call = copy.Expression.find(record => record.id === 'call:main-update');
+  call.invokes.push({ ...call.invokes[0], target_id: 'symbol:update-frame', state: 'candidate', argument_bindings: [] });
+  const projection = project(copy);
+  const has = (type, from, to, check = () => true) => projection.relationships.some(edge =>
+    edge.type === type && edge.source_id === from && edge.target_id === to && check(edge));
+  assert(has('IMPLEMENTS', 'unit:SceneManager', 'unit:Pass'));
+  assert(has('INHERITANCE', 'unit:RenderContext', 'unit:SceneManager', edge => edge.state === 'candidate'));
+  assert(has('DECLARES', 'unit:Pass', 'member:Pass-run'), 'An interface declares its required callable contract');
+  assert(has('OVERRIDE', 'member:update', 'member:Pass-run'));
+  assert(has('IMPLEMENTS', 'member:update', 'member:Pass-run'), 'An established override of an interface callable fulfils it');
+  assert(has('USES', 'member:execute', 'member:frame-id', edge => edge.usage === 'capture'));
+  assert(has('IMPORT', 'module:mod-app', 'module:mod-engine', edge => edge.form === 'using'));
+  assert(has('INVOKES', 'unit:main', 'member:update', edge => edge.state === 'established'));
+  assert(has('INVOKES', 'unit:main', 'member:update-frame', edge => edge.state === 'candidate'), 'Candidates stay separate from selected targets');
+  assert(!projection.relationships.some(edge => edge.type === 'IMPORT' && edge.supporting_facts.some(fact => /header/.test(fact.subject_id))),
+    'Textual includes never establish a module import');
 });
